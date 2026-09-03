@@ -30,7 +30,7 @@
 | A4 | 乐观锁 | 并发更新同一行 → 恰一成功，其余 409；version 不匹配更新 409 |
 | A5 | 导入导出 | 导出 JSON（含 id / status / created_at）→ 清空环境 → 导入 → 数据一致；**重导同一文件结果一致（幂等）**；序列正确（后续插入不冲突）；导入期间并发写按定稿行为（阻塞至提交 / 跨导入读改写 409） |
 | A6 | 日志 | 请求级 + 错误级日志含 `X-Request-ID` 与 `X-Operator`；敏感值按规则脱敏；不记业务语义内容 |
-| A7 | 部署 | docker-compose 双 network（`activelist_internal` + `zhuzhao_to_activelist`）；`/healthz` `/readyz`；优雅停止（SIGTERM 排空） |
+| A7 | 部署 | docker-compose 双 network（`activelist_internal` + `zhuzhao_to_activelist`）、**apiserver 双副本**；`/healthz` `/readyz`（readyz 检 PG）；优雅停止（SIGTERM 排空，重启单副本服务不中断）；**migrations 全库只执行一次**（init 容器 / CI 步骤，工具自带 advisory lock，多副本并发启动不重复执行）；备份任务按日跑通 |
 | 门禁 | 工程 | `make lint` / `make test` 全绿；CRUD + 演进 + 导入导出有针对真实 PG 的集成测试 |
 
 ## 3. 里程碑拆分
@@ -44,7 +44,7 @@
 | M-A3 CRUD | 插入 / 列表（keyset 分页 + created_at 倒序）/ 单查 / 更新（读-合并-全量校验-乐观锁）/ 软删 / 恢复 | M-A2 | A2 / A4 |
 | M-A4 Schema 演进 | 演进端点 + 方案 D 语义（兼容 / 破坏性懒执行）+ schema 变更历史查询 | M-A2 | A3 |
 | M-A5 导入导出 | 导出（含 id/status/created_at）/ 全量替换导入（同事务分批写入 + setval）/ 批次审计素材（响应返回批次汇总） | M-A3 | A5 |
-| M-A6 日志 + 部署收尾 | slog 接入（utils `logger`）、访问日志（**统一中间件出口**：method/path/operator/trace_id/参数 4KB 截断/结果；脱敏暂不做）、compose 双 network、README 快速开始 | 全部 | A6 / A7 |
+| M-A6 日志 + 部署收尾 | slog 接入（utils `logger`）、访问日志（**统一中间件出口**：method/path/operator/trace_id/参数 4KB 截断/结果；脱敏暂不做）、compose 双 network（**多副本**）、备份策略（pg_dump 每日 + WAL 归档）、README 快速开始 | 全部 | A6 / A7 |
 
 ## 4. API 清单（收敛后修订版，**取代 activelist.md §6.9 旧清单**）
 
@@ -111,6 +111,7 @@ server:
 
 postgres:
   url: "postgres://${PG_USER:-activelist}:${PG_PASSWORD}@postgres:5432/activelist?sslmode=disable"
+  max_open_conns: 10        # 多实例时按 副本数 × max_open_conns < PG max_connections 估算
 
 log:                          # 对齐 zhuzhao-utils logger 的 LogConfig（级别/目录/轮转）
   level: info
@@ -133,7 +134,11 @@ business:
 - **访问日志（审计配合）**：统一中间件出口记录 method / path / operator / trace_id / 请求参数（4KB 截断）/ 结果状态；schema 字段定义格式**预留 `sensitive: true` 标记**（暂不实现脱敏逻辑；启用时只改日志层一处，客户端契约不变）。
 - **X-Request-ID 透传**：所有响应回显 `X-Request-ID` 响应头（调用方与 zhuzhao 审计行关联排障用）。
 - **X-Operator 缺失兜底**：`"system"`（沿用 §15.4）；导入操作者 = 请求头操作者。
-- **Schema 缓存**：单进程内存缓存即可；演进成功后主动失效（无需跨实例广播——单实例）。
+- **Schema 缓存（多实例就绪）**：进程内 TTL 缓存（60s）或先不做缓存（元数据表 PK 查询足够便宜，当前量级可承受）——**不引入跨实例广播**。演进为低频操作，TTL 窗口内个别实例仍按旧 schema 校验（如新增 optional 字段后短暂 422）属预期行为，不额外处理。
+- **并发 Schema 演进**：元数据行带乐观锁——后到者 409，须重读最新定义后重提（**全量定义、非字段级 merge**；低频演进建议串行操作，沿用原 §6.4 语义）。
+- **导入期间并发写保护**：常规写路径设会话级 `lock_timeout`（约 5s，超时快速返回 409），避免请求在导入长事务的行锁上挂住、耗尽连接池；导入事务自身不设（utils `postgres.Config` 可加 LockTimeout 字段，记入 ADR-003 D1 遗留清单）。
+- **Insert 重试重复（已知限制，接受）**：无业务唯一键 + 自增 id，调用方重试 POST 会产生重复行；调用方为 zhuzhao 统一 client 层，如需可后置加 `Idempotency-Key`（RFC draft / Stripe 模式），activelist 侧不实现。
+- **备份（敏感高危数据必须）**：activelist PG 每日基线备份（pg_dump）+ WAL 归档（PITR）；导入等高危操作前建议先快照。备份策略随 M-A6 写入部署文档。
 - **保留字段**：`id` / `version` / `status` / `created_at` / `updated_at` / `created_by` / `updated_by` / `data` 禁止用户 schema 使用。
 - **软删行查询**：列表默认排除；单查按 id 可见（带 status 标注）——便于审计对账与恢复操作。
 
