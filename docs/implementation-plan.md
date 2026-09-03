@@ -39,7 +39,7 @@
 
 | 里程碑 | 内容 | 依赖 | 退出标准 |
 |--------|------|------|---------|
-| M-A1 骨架 | go.mod（引 zhuzhao-utils，未发布前 `replace` 指向本地 zhuzhao-utils 路径）、config 加载、migrations 000001（元数据表）、docker-compose（PG）、healthz/readyz、优雅停止 | 🚦 zhuzhao-utils 含 `logger` + `postgres`（**两包落库即可启动，不等发布**；zhuzhao 主仓 `internal/` 包受 Go internal 规则限制无法被外部 module 引用，**不能 replace 到主仓**） | 服务起 + 健康检查过 |
+| M-A1 骨架 | go.mod（引 zhuzhao-utils）、config 加载、migrations 000001（元数据表）、docker-compose（PG）、healthz/readyz、优雅停止 | ✅ 已就绪（2026-09-03 验证，见 ADR-003 D1 验证记录）——**可立即开工** | 服务起 + 健康检查过 |
 | M-A2 类型注册 + 建表 | 元数据表（类型 + 当前 schema + 变更记录）、CREATE TABLE、字段定义校验（int/string/列表、白名单、保留字段） | M-A1 | A1 |
 | M-A3 CRUD | 插入 / 列表（keyset 分页 + created_at 倒序）/ 单查 / 更新（读-合并-全量校验-乐观锁）/ 软删 / 恢复 | M-A2 | A2 / A4 |
 | M-A4 Schema 演进 | 演进端点 + 方案 D 语义（兼容 / 破坏性懒执行）+ schema 变更历史查询 | M-A2 | A3 |
@@ -139,7 +139,7 @@ business:
 
 | # | 项 | 状态 | 备注 |
 |---|----|------|------|
-| O1 | 审计落点机制 | ⚠️ 待拍板 | 建议已提（zhuzhao client 层同步写审计表 + 水位对账）；不阻塞 M-A1–M-A5 开发，写接口响应契约（返回变更后文档）已按其定稿 |
-| O2 | utils 依赖面核对 | 🚦 迁移中 | `logger` / `postgres` 为硬依赖；**M-A1 实际启动点 = 两包进入 zhuzhao-utils**（本地 `replace` 即用，不等发布）；落库后核对 API 面 |
-| O3 | 存储加密 | ⚠️ 暂缓 | 上线前复核（敏感高危数据） |
+| O1 | 审计落点机制 | ⚠️ 待拍板 | 建议方案已写入 ADR-003「审计落点机制（建议方案）」节；不阻塞 M-A1–M-A5 开发，activelist 侧契约已按其定稿（写接口响应返回变更后文档） |
+| O2 | utils 依赖面核对 | ✅ 已验证（2026-09-03） | `logger`/`postgres` 已 config 解耦可直接使用；`errcode`/`response` API 满足统一响应包装（`detail.error_code` 字段 activelist 侧自行适配）；遗留不阻塞项：utils 的 `logger`/`postgres` 无单测（可选补，见 ADR-003 D1 验证记录） |
+| O3 | 存储加密 | ✅ 已拍板不做（2026-09-03） | 内网部署 + 日志脱敏 + 审计一期不落字段值已覆盖当前风险评估；若未来跨网部署或合规要求变化再启用（届时另立决策） |
 | O4 | E13 反代 | 🚦 蓝图 | 不阻塞开发；阻塞联调与上线 |
