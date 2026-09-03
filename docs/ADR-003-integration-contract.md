@@ -126,7 +126,7 @@ col_<type>(
 
 | # | 能力需求 | zhuzhao 侧载体 | 状态 | 对 activelist 的阻塞关系 |
 |---|---------|---------------|------|------------------------|
-| D1 | 共享 utils：`logger` / `postgres`（硬依赖），`errcode` / `response` / `jsonutil` / `validate` / `crypto`（按需） | zhuzhao-utils 独立项目 | 🚦 迁移中（零依赖包已抽；logger/postgres 待 config 解耦后抽） | **阻塞开发**（M-A1 起需引包；未发布前 go.mod `replace` 本地路径可过渡） |
+| D1 | 共享 utils：`logger` / `postgres`（硬依赖），`errcode` / `response` / `jsonutil` / `validate` / `crypto`（按需） | zhuzhao-utils 独立项目 | 🚦 迁移中（零依赖包已抽；logger/postgres 待 config 解耦后抽） | **阻塞开发**——**M-A1 启动点 = `logger`+`postgres` 落入 zhuzhao-utils**（本地 `replace` 即用，不等发布；zhuzhao 主仓 `internal/` 包受 Go internal 规则限制无法被外部 module 引用，不能 replace 到主仓） |
 | D2 | 反向代理 + header 透传（E13：`app/service/proxy/` + `SetForwardHeaders` + Restrict 资源 `activelist` + accesslog 跳过 body） | zhuzhao E13 | 蓝图 🚦（未开始） | **不阻塞开发；阻塞联调与上线**（activelist 零认证，无网关不能对外暴露） |
 | D3 | 业务审计记录（activelist 写接口返回变更后完整文档；zhuzhao 侧落审计；导入按批次） | zhuzhao 编排层 / `audit_logs` | ⚠️ 落点机制待拍板（建议方案已提：client 层同步写独立审计表 + 水位对账兜底） | **不阻塞开发**（activelist 侧契约已定：写接口响应含变更后文档）；阻塞审计闭环验收 |
 | D4 | 事件发布（zhuzhao 业务操作点显式发布；工单非首数据源，接入契约由 activelist 侧定义） | zhuzhao M-E taskrunner | 蓝图 🚦 | **无依赖**（activelist 不感知事件） |
