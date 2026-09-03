@@ -1,0 +1,144 @@
+# activelist 实现计划（zhuzhao Phase 3 · M-A）
+
+> **状态**：2026-09-03 建档，**实现 SSOT**。定稿依据 = [`docs/activelist.md`](./activelist.md) 头部（收敛声明·最终画像·设计定稿补充）+ [`ADR-003-integration-contract.md`](./ADR-003-integration-contract.md)（集成契约 SSOT）。zhuzhao 侧排期挂 M-A（phase3/13），其验收标准引用本文件 §2（M-A 验收 = 本文件验收标准）。
+
+---
+
+## 1. 目标 / 非目标
+
+**目标**（= 职责收敛定稿，全部且仅此）：
+
+| # | 能力 | 定稿口径 |
+|---|------|---------|
+| 1 | 类型注册 | 任意自定义类型；字段类型 = `int` / `string` / 二者的**列表**；typeName 与字段名白名单校验 |
+| 2 | Schema 演进 | **方案 D**：单一当前版本；兼容变更（加 optional / 放宽）零迁移；破坏性变更允许提交、懒执行（旧数据下次更新 422） |
+| 3 | 动态字段校验 | 写路径全量校验（读旧行 → 合并 → 对当前 schema 校验）；读取零校验 |
+| 4 | 数据 CRUD | PG 每类型一表 + `data` JSONB；id 自增（BIGSERIAL）；乐观锁（version）；软删保留 + 恢复 |
+| 5 | 查询 | 仅 id 分页 + 创建时间倒序（无过滤 / 排序参数 / 聚合） |
+| 6 | 导入导出 | JSON；导入 = **全量替换**（单事务清表重灌、保留源 id、version 重置 1、setval 序列）；幂等；并发由乐观锁保护 |
+| 7 | 技术日志 | slog 文件日志（复用 zhuzhao-utils `logger`）；请求级 + 错误级；含 `X-Request-ID`；可脱敏 |
+
+**非目标**（明确不做，边界）：认证/鉴权（zhuzhao 网关统一）、事件发布（zhuzhao 业务操作点显式发布）、业务审计（zhuzhao 侧记录）、历史快照、过滤/排序/聚合查询、嵌套对象/关系/公式字段、存储加密（⚠️ 暂缓，上线前复核）、多租户、物理删除 API。
+
+## 2. 验收标准（M-A 退出标准）
+
+| # | 验收项 | 通过条件 |
+|---|--------|---------|
+| A1 | 类型注册 | 注册 → 建表 + 元数据落库；重复注册 409；typeName / 字段名非法 422；deprecated 类型拒绝写入 |
+| A2 | CRUD | 插入/按 id 查/更新/软删/恢复全通；软删后默认不可见、更新 409、重复软删幂等；恢复后可写 |
+| A3 | Schema 演进 | 加 optional 字段后旧数据零迁移可读可写；加 required 字段后新插入强制校验、旧数据更新返回 422（错误信息含迁移指引） |
+| A4 | 乐观锁 | 并发更新同一行 → 恰一成功，其余 409；version 不匹配更新 409 |
+| A5 | 导入导出 | 导出 JSON（含 id / status / created_at）→ 清空环境 → 导入 → 数据一致；**重导同一文件结果一致（幂等）**；序列正确（后续插入不冲突）；导入期间并发写按定稿行为（阻塞至提交 / 跨导入读改写 409） |
+| A6 | 日志 | 请求级 + 错误级日志含 `X-Request-ID` 与 `X-Operator`；敏感值按规则脱敏；不记业务语义内容 |
+| A7 | 部署 | docker-compose 双 network（`activelist_internal` + `zhuzhao_to_activelist`）；`/healthz` `/readyz`；优雅停止（SIGTERM 排空） |
+| 门禁 | 工程 | `make lint` / `make test` 全绿；CRUD + 演进 + 导入导出有针对真实 PG 的集成测试 |
+
+## 3. 里程碑拆分
+
+> 总量锚定 zhuzhao 侧估算 **1.5–3 人日（⚠️ 待校准）**；串行依赖如下，M-A4/M-A5 可并行于 M-A3 之后。
+
+| 里程碑 | 内容 | 依赖 | 退出标准 |
+|--------|------|------|---------|
+| M-A1 骨架 | go.mod（引 zhuzhao-utils，未发布前 `replace` 本地路径）、config 加载、migrations 000001（元数据表）、docker-compose（PG）、healthz/readyz、优雅停止 | 🚦 utils（可 replace 过渡） | 服务起 + 健康检查过 |
+| M-A2 类型注册 + 建表 | 元数据表（类型 + 当前 schema + 变更记录）、CREATE TABLE、字段定义校验（int/string/列表、白名单、保留字段） | M-A1 | A1 |
+| M-A3 CRUD | 插入 / 列表（keyset 分页 + created_at 倒序）/ 单查 / 更新（读-合并-全量校验-乐观锁）/ 软删 / 恢复 | M-A2 | A2 / A4 |
+| M-A4 Schema 演进 | 演进端点 + 方案 D 语义（兼容 / 破坏性懒执行）+ schema 变更历史查询 | M-A2 | A3 |
+| M-A5 导入导出 | 导出（含 id/status/created_at）/ 全量替换导入（同事务分批写入 + setval）/ 批次审计素材（响应返回批次汇总） | M-A3 | A5 |
+| M-A6 日志 + 部署收尾 | slog 接入（utils `logger`）、脱敏规则、compose 双 network、README 快速开始 | 全部 | A6 / A7 |
+
+## 4. API 清单（收敛后修订版，**取代 activelist.md §6.9 旧清单**）
+
+> 旧清单中 `/history` 数据端点移除（审计归 zhuzhao）；列表查询砍掉 filter/sort；新增导入导出与恢复；**写接口（POST/PUT/DELETE/restore）统一返回变更后完整文档**（id、version、data、updated_at——审计契约素材，见 ADR-003 收敛修订）。
+
+**类型管理**（zhuzhao 侧 Restrict 映射 `activelist:admin`）：
+
+| 方法 | 路径 | 用途 |
+|------|------|------|
+| POST | `/api/v1/admin/types` | 注册新类型（含字段定义） |
+| GET | `/api/v1/admin/types` | 类型列表 |
+| GET | `/api/v1/admin/types/:typeName` | 当前 schema 定义 |
+| GET | `/api/v1/admin/types/:typeName/history` | **schema 变更历史**（元数据侧，非数据快照） |
+| POST | `/api/v1/admin/types/:typeName/schema` | Schema 演进（方案 D 语义） |
+| POST | `/api/v1/admin/types/:typeName/deprecate` | 废弃类型 |
+
+**数据 CRUD + 导入导出**（Restrict 映射 `activelist:read` / `write`）：
+
+| 方法 | 路径 | 用途 |
+|------|------|------|
+| POST | `/api/v1/data/:typeName` | 插入数据 |
+| GET | `/api/v1/data/:typeName` | 列表：仅 keyset 分页（`?after_id=` / `?page_size=`）+ created_at 倒序 |
+| GET | `/api/v1/data/:typeName/:id` | 查单条 |
+| PUT | `/api/v1/data/:typeName/:id` | 更新（body 携带 version，乐观锁） |
+| DELETE | `/api/v1/data/:typeName/:id` | 软删除 |
+| POST | `/api/v1/data/:typeName/:id/restore` | 恢复软删数据（最终画像「高危数据误删可恢复」） |
+| GET | `/api/v1/data/:typeName/export` | 导出 JSON（含 id / status / created_at；含软删行——否则导出→导入会丢失软删数据） |
+| POST | `/api/v1/data/:typeName/import` | 全量替换导入（multipart/JSON body；响应返回批次汇总：行数/耗时/max id） |
+
+~~`GET /api/v1/data/:typeName/:id/history`~~ — 移除（数据变更历史 = 审计，归 zhuzhao）。
+
+**错误码**：沿用 activelist.md §6.8（`{code, msg, data, detail.error_code}` 统一包装）；`FIELD_DEPRECATED` / `NEW_REQUIRED_FIELD`（懒执行提示迁移）/ `CONFLICT` 语义保持。
+
+## 5. 代码目录结构（预定）
+
+```
+activelist/
+├── cmd/
+│   └── apiserver/main.go      # 唯一二进制（收敛后单进程）
+├── internal/
+│   ├── config/                # 配置加载（${VAR} 环境变量展开，对齐 zhuzhao 模式）
+│   ├── meta/                  # 类型注册 + Schema 定义/演进（元数据表读写）
+│   ├── storage/               # 每类型表管理（CREATE TABLE）+ CRUD + 乐观锁 + 软删
+│   ├── validation/            # 字段校验（int/string/列表、白名单、保留字段、schema 合法性）
+│   ├── transfer/              # 导入导出（全量替换、导出、序列 setval）
+│   ├── api/                   # HTTP handler + 中间件（requestid、技术 access 日志、脱敏）
+│   └── app/                   # 装配、启动、优雅停止
+├── migrations/                # 独立库独立编号（000001 起；与 zhuzhao 迁移号无关）
+├── config/config.yaml
+├── deploy/
+│   └── docker-compose.yaml    # PG + apiserver；双 network，apiserver 仅对 zhuzhao network 暴露 8080
+└── Makefile                   # lint / test / test-integration / build
+```
+
+命名注意：`internal/` 下包名避开 zhuzhao-utils 已有包名（`postgres` / `logger` 等），存储层用 `storage`。
+
+## 6. 配置（收敛后，取代 activelist.md §18.4 旧配置）
+
+```yaml
+server:
+  port: 8080
+  read_timeout: 30s
+  write_timeout: 300s        # 导入大文件需要长写超时
+
+postgres:
+  url: "postgres://${PG_USER:-activelist}:${PG_PASSWORD}@postgres:5432/activelist?sslmode=disable"
+
+log:                          # 对齐 zhuzhao-utils logger 的 LogConfig（级别/目录/轮转）
+  level: info
+
+business:
+  page_size_default: 20
+  page_size_max: 100
+  import_batch_rows: 1000    # 全量替换导入同事务内的分批行数
+```
+
+旧配置中的 mongo / redis / asynq / log_db 段全部移除（依赖已砍）。
+
+## 7. 实现注意点
+
+- **全量替换导入**：单事务内 `DELETE` 全表（含软删行）→ 分批 INSERT（`import_batch_rows`）→ `setval` 至 max(id)；百万行级注意 WAL 膨胀与锁时长，导入为低频运维级操作可接受，事务内分批控制内存。
+- **导出必须含软删行**（带 status），否则导出→导入闭环会丢软删数据，违背「软删保留」。
+- **分页**：keyset（`WHERE id > $1 ORDER BY created_at DESC, id DESC LIMIT n`）+ `(created_at DESC, id DESC)` 索引；offset 深翻页在百万行下不可用。
+- **元数据并发注册**：typeName 唯一索引，并发注册后到者 409。
+- **X-Operator 缺失兜底**：`"system"`（沿用 §15.4）；导入操作者 = 请求头操作者。
+- **Schema 缓存**：单进程内存缓存即可；演进成功后主动失效（无需跨实例广播——单实例）。
+- **保留字段**：`id` / `version` / `status` / `created_at` / `updated_at` / `created_by` / `updated_by` / `data` 禁止用户 schema 使用。
+- **软删行查询**：列表默认排除；单查按 id 可见（带 status 标注）——便于审计对账与恢复操作。
+
+## 8. 开放项（实现前/上线前需关闭）
+
+| # | 项 | 状态 | 备注 |
+|---|----|------|------|
+| O1 | 审计落点机制 | ⚠️ 待拍板 | 建议已提（zhuzhao client 层同步写审计表 + 水位对账）；不阻塞 M-A1–M-A5 开发，写接口响应契约（返回变更后文档）已按其定稿 |
+| O2 | utils 依赖面核对 | 🚦 迁移中 | `logger` / `postgres` 为硬依赖（需 config 解耦后抽取）；落地后核对 API 面 |
+| O3 | 存储加密 | ⚠️ 暂缓 | 上线前复核（敏感高危数据） |
+| O4 | E13 反代 | 🚦 蓝图 | 不阻塞开发；阻塞联调与上线 |
