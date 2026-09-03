@@ -16,7 +16,7 @@
 | 4 | 数据 CRUD | PG 每类型一表 + `data` JSONB；id 自增（BIGSERIAL）；乐观锁（version）；软删保留 + 恢复 |
 | 5 | 查询 | 仅 id 分页 + 创建时间倒序（无过滤 / 排序参数 / 聚合） |
 | 6 | 导入导出 | JSON；导入 = **全量替换**（单事务清表重灌、保留源 id、version 重置 1、setval 序列）；幂等；并发由乐观锁保护 |
-| 7 | 技术日志 | slog 文件日志（复用 zhuzhao-utils `logger`）；请求级 + 错误级；含 `X-Request-ID`；可脱敏 |
+| 7 | 技术日志 | slog 文件日志（复用 zhuzhao-utils `logger`）；请求级（访问日志记 method/path/operator/trace_id/参数 4KB 截断）+ 错误级；含 `X-Request-ID`；**脱敏暂不做**（已拍板，预留 schema `sensitive` 标记 + 统一日志出口两个钩子，见 ADR-003 审计节） |
 
 **非目标**（明确不做，边界）：认证/鉴权（zhuzhao 网关统一）、事件发布（zhuzhao 业务操作点显式发布）、业务审计（zhuzhao 侧记录）、历史快照、过滤/排序/聚合查询、嵌套对象/关系/公式字段、存储加密（⚠️ 暂缓，上线前复核）、多租户、物理删除 API。
 
@@ -44,7 +44,7 @@
 | M-A3 CRUD | 插入 / 列表（keyset 分页 + created_at 倒序）/ 单查 / 更新（读-合并-全量校验-乐观锁）/ 软删 / 恢复 | M-A2 | A2 / A4 |
 | M-A4 Schema 演进 | 演进端点 + 方案 D 语义（兼容 / 破坏性懒执行）+ schema 变更历史查询 | M-A2 | A3 |
 | M-A5 导入导出 | 导出（含 id/status/created_at）/ 全量替换导入（同事务分批写入 + setval）/ 批次审计素材（响应返回批次汇总） | M-A3 | A5 |
-| M-A6 日志 + 部署收尾 | slog 接入（utils `logger`）、脱敏规则、compose 双 network、README 快速开始 | 全部 | A6 / A7 |
+| M-A6 日志 + 部署收尾 | slog 接入（utils `logger`）、访问日志（**统一中间件出口**：method/path/operator/trace_id/参数 4KB 截断/结果；脱敏暂不做）、compose 双 network、README 快速开始 | 全部 | A6 / A7 |
 
 ## 4. API 清单（收敛后修订版，**取代 activelist.md §6.9 旧清单**）
 
@@ -130,6 +130,8 @@ business:
 - **导出必须含软删行**（带 status），否则导出→导入闭环会丢软删数据，违背「软删保留」。
 - **分页**：keyset（`WHERE id > $1 ORDER BY created_at DESC, id DESC LIMIT n`）+ `(created_at DESC, id DESC)` 索引；offset 深翻页在百万行下不可用。
 - **元数据并发注册**：typeName 唯一索引，并发注册后到者 409。
+- **访问日志（审计配合）**：统一中间件出口记录 method / path / operator / trace_id / 请求参数（4KB 截断）/ 结果状态；schema 字段定义格式**预留 `sensitive: true` 标记**（暂不实现脱敏逻辑；启用时只改日志层一处，客户端契约不变）。
+- **X-Request-ID 透传**：所有响应回显 `X-Request-ID` 响应头（调用方与 zhuzhao 审计行关联排障用）。
 - **X-Operator 缺失兜底**：`"system"`（沿用 §15.4）；导入操作者 = 请求头操作者。
 - **Schema 缓存**：单进程内存缓存即可；演进成功后主动失效（无需跨实例广播——单实例）。
 - **保留字段**：`id` / `version` / `status` / `created_at` / `updated_at` / `created_by` / `updated_by` / `data` 禁止用户 schema 使用。
@@ -139,7 +141,7 @@ business:
 
 | # | 项 | 状态 | 备注 |
 |---|----|------|------|
-| O1 | 审计落点机制 | ⚠️ 待拍板 | 建议方案已写入 ADR-003「审计落点机制（建议方案）」节；不阻塞 M-A1–M-A5 开发，activelist 侧契约已按其定稿（写接口响应返回变更后文档） |
+| O1 | 审计落点机制 | ✅ 已拍板（2026-09-03） | 双侧记录 + `X-Request-ID` 关联（zhuzhao 审计正本 / activelist 访问日志）；**脱敏暂不做**（风险接受 + 两个零成本钩子）；机制全貌见 ADR-003「审计落点机制」节；activelist 侧义务 = 访问日志（M-A6）+ 写接口返回完整文档（已定稿） |
 | O2 | utils 依赖面核对 | ✅ 已验证（2026-09-03） | `logger`/`postgres` 已 config 解耦可直接使用；`errcode`/`response` API 满足统一响应包装（`detail.error_code` 字段 activelist 侧自行适配）；遗留不阻塞项：utils 的 `logger`/`postgres` 无单测（可选补，见 ADR-003 D1 验证记录） |
 | O3 | 存储加密 | ✅ 已拍板不做（2026-09-03） | 内网部署 + 日志脱敏 + 审计一期不落字段值已覆盖当前风险评估；若未来跨网部署或合规要求变化再启用（届时另立决策） |
 | O4 | E13 反代 | 🚦 蓝图 | 不阻塞开发；阻塞联调与上线 |

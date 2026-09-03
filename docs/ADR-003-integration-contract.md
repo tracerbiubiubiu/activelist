@@ -128,7 +128,7 @@ col_<type>(
 |---|---------|---------------|------|------------------------|
 | D1 | 共享 utils：`logger` / `postgres`（硬依赖），`errcode` / `response` / `jsonutil` / `validate` / `crypto`（按需） | zhuzhao-utils 独立项目 | ✅ **迁移完成，已验证（2026-09-03）** | **已解除——M-A1 可开工** |
 | D2 | 反向代理 + header 透传（E13：`app/service/proxy/` + `SetForwardHeaders` + Restrict 资源 `activelist` + accesslog 跳过 body） | zhuzhao E13 | 蓝图 🚦（未开始） | **不阻塞开发；阻塞联调与上线**（activelist 零认证，无网关不能对外暴露） |
-| D3 | 业务审计记录（activelist 写接口返回变更后完整文档；zhuzhao 侧落审计；导入按批次） | zhuzhao 编排层 / `audit_logs` | ⚠️ 落点机制待拍板（**建议方案见下方专节**） | **不阻塞开发**（activelist 侧契约已定：写接口响应含变更后文档）；阻塞审计闭环验收 |
+| D3 | 业务审计记录 | zhuzhao client 封装层 + `activelist_audit_log` 表 | ✅ **已拍板**（2026-09-03，机制见下方专节：双侧记录 + X-Request-ID 关联；脱敏暂不做＝风险接受） | 已解除阻塞（zhuzhao 侧实现项：client 层 + 审计表；activelist 侧义务已定稿） |
 | D4 | 事件发布（zhuzhao 业务操作点显式发布；工单非首数据源，接入契约由 activelist 侧定义） | zhuzhao M-E taskrunner | 蓝图 🚦 | **无依赖**（activelist 不感知事件） |
 | D5 | 网络隔离（双 network，仅 zhuzhao 容器可达 apiserver 8080） | 双方部署约定 | activelist 自理 docker-compose | 部署期事项（M-A6） |
 
@@ -140,20 +140,27 @@ col_<type>(
 - ✅ zhuzhao 主仓已切换 import；`internal/pkg/errcode` 为**转发 shim**（业务码 20000 起留 zhuzhao、框架码进 utils、类型别名统一——有意分层，非双份维护）；`internal/pkg/resource` 留 zhuzhao（权限域绑定，activelist 零认证不需要）。
 - ⚠️ 遗留（不阻塞，utils 侧可选补充）：`logger` / `postgres` 无单测（其余包有）。
 
-## 审计落点机制（建议方案，⚠️ 待拍板 2026-09-03）
+## 审计落点机制（已拍板 2026-09-03：双侧记录 + request_id 关联；脱敏暂不做）
 
-> 背景：收敛后 activelist 不记业务审计（只记技术/运行日志），「谁在何时对什么数据做了什么」须由 zhuzhao 落档；且调用 activelist 有两条路径（网关反代透传 / zhuzhao 内部代码直调），审计点必须全覆盖。原「审计落点机制待定 ⚠️」的展开建议如下。
+**形态**：zhuzhao 记「谁、何时、干了什么、调了什么接口、返回值是什么」＝**审计正本**（落库表）；activelist 记「何时被调用、参数是什么、结果是什么」＝**访问日志**（技术日志）；同一 `X-Request-ID` 贯穿关联。
 
-**建议形态（四部分）**：
+| | zhuzhao（审计正本） | activelist（访问日志） |
+|---|---|---|
+| 落点 | **统一 activelist client 封装层**同步写 `activelist_audit_log` 表 | 技术日志（slog 文件，轮转，M-A6） |
+| 记录 | operator、时间、action（snake_case）、method + path（含 type/id）、HTTP 状态、**返回值原样**（JSONB + 截断上限 16KB）、trace_id | 时间、operator（X-Operator）、method + path、**请求参数原样**（4KB 截断）、结果状态、trace_id（X-Request-ID） |
+| 持久性 | 审计表按月分区，保留期独立；不可丢的正本 | 日志轮转可过期，排障辅助（保留建议 30–90 天，兼作审计缺行时的事后线索） |
+| 可靠性 | client 层调用成功后**同请求路径同步写**；失败落本地重投队列 + 告警 | — |
 
-1. **写入点 = zhuzhao 统一的 activelist client 封装层**。两条调用路径的公共必经点，天然持有 `X-Operator` / `X-Request-ID` / 请求 / 响应。否选项：反代中间件（漏内部直调）；各业务调用点（散落易漏）。
-2. **独立审计表 `activelist_audit_log`**（zhuzhao 库；**不复用**工单域 `ticket_events`）。一期只记元信息、**不落任何字段值**：`trace_id / operator / action（create|update|delete|restore|import|export）/ type_name / data_id / http_status / version_before → version_after / created_at`；按月分区、保留策略独立于普通日志。导入/导出按**批次一行**（行数 / 耗时 / max_id）。乐观锁 409 与校验 422 不产生审计（操作未生效）。
-3. **内容级 diff 二期（可选）**：activelist 是唯一懂 schema `sensitive` 标记的一方——由 activelist 写接口响应附带脱敏后的 after-image / changed_fields，zhuzhao 原样落库；**敏感值永不进 zhuzhao 库**。
-4. **可靠性 = 同步写 + 兜底 + 水位对账**。无 2PC，「activelist 已提交但审计行未写」窗口无法消除、只能做到可检测可修复：① client 层调用成功后**同请求路径同步写**审计行，失败落本地重投队列 + 告警；② **水位对账**——审计行带 `(type_name, data_id, version_after)`，数据行自带 version，定期任务找「version 前进但审计缺失」的行，经 activelist 按 id 查询回填一条事后审计行 + P1 告警。
+**要点**：
 
-**activelist 侧契约**（已定稿于 implementation-plan §4）：写接口（POST/PUT/DELETE/restore/import）响应返回变更后完整文档（id / version / data / updated_at）；按 id 可查（对账回填用）；导入响应返回批次汇总。
+1. **记录点 = client 封装层**（反代与内部直调的公共必经点；网关 accesslog 会漏内部调用）。client 层同时负责 `X-Request-ID` 的**生成与透传**——zhuzhao 内部直调没有网关生成 request id，必须由 client 层补上，否则关联断链。
+2. **审计表**：不复用工单域 `ticket_events`；索引 `(operator, created_at)` / `(type_name, data_id, created_at)` / `(trace_id)`；**导入/导出按批次一行**，response 存批次汇总（行数/耗时/max_id），**不存全量数据**。
+3. **脱敏暂不做（明确风险接受）**：敏感值将明文存在于 activelist 日志与 zhuzhao 审计表。缓解＝暴露面收敛：内网双 network 不变；**E13 网关 accesslog 仍跳过 body**（敏感值在 zhuzhao 只落审计表一处，不进 accesslog 第二份）；日志文件权限收紧；保留期收敛。**预留两个零成本钩子**：schema 字段定义格式预留 `sensitive: true` 标记（暂不实现逻辑）；activelist 日志输出走统一中间件出口（将来开脱敏只改一处）。**重估触发**：合规要求 / 跨网部署 / 安全事件。
+4. **水位对账暂缓（风险接受）**：重投队列也丢失时审计缺行（窗口 = activelist 已提交 + 审计未落）；activelist 访问日志可作事后人工回填线索；数据行 version 单调递增，将来补自动对账成本低。
+5. **不产生审计**：乐观锁 409、校验 422（操作未生效）；单条 GET 不记（噪声）；**export 记批次行**（批量拉敏感数据属访问审计）。
+6. **已否选项**：activelist 自写审计表（违背收敛拍板）；反代中间件记审计（漏内部调用）；事件驱动审计（事件职责已移交 zhuzhao 业务操作点）。
 
-**已否选项**：activelist 自写审计表（违背收敛拍板）；反代中间件记审计（漏内部调用 + 动态字段脱敏在 zhuzhao 侧无解）；事件驱动审计（事件职责已移交 zhuzhao 业务操作点，且异步放大丢失窗口）。
+**activelist 侧契约**（已定稿于 implementation-plan §4）：写接口响应返回变更后完整文档（id / version / data / updated_at）；按 id 可查；导入响应返回批次汇总。审计视图（脱敏版响应）待脱敏启用时再增补，additive 不破坏契约。
 
 ## 待办
 
