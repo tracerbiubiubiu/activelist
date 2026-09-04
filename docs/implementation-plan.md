@@ -44,7 +44,7 @@
 | M-A3 CRUD | 插入 / 列表（keyset 分页 + created_at 倒序）/ 单查 / 更新（读-合并-全量校验-乐观锁）/ 软删 / 恢复 | M-A2 | A2 / A4 |
 | M-A4 Schema 演进 | 演进端点 + 方案 D 语义（兼容 / 破坏性懒执行）+ schema 变更历史查询 | M-A2 | A3 |
 | M-A5 导入导出 | 导出（含 id/status/created_at）/ 全量替换导入（同事务分批写入 + setval）/ 批次审计素材（响应返回批次汇总） | M-A3 | A5 |
-| M-A6 日志 + 部署收尾 | slog 接入（utils `logger`）、访问日志（**统一中间件出口**：method/path/operator/trace_id/参数 4KB 截断/结果；脱敏暂不做）、compose 双 network（**多副本**）、备份策略（pg_dump 每日 + WAL 归档）、README 快速开始 | 全部 | A6 / A7 |
+| M-A6 日志 + 部署收尾 | slog 接入（utils `logger`）、访问日志（**统一中间件出口**：method/path/operator/trace_id/参数 4KB 截断/结果；脱敏暂不做）、**AK/SK 验签中间件**（utils `aksk`，验 zhuzhao 调用签名——2026-09-03 基线修订，~0.2 天）、compose 双 network（**多副本**）、备份策略（pg_dump 每日 + WAL 归档）、README 快速开始 | 全部 | A6 / A7 |
 
 ## 4. API 清单（收敛后修订版，**取代 activelist.md §6.9 旧清单**）
 
@@ -133,7 +133,7 @@ business:
 - **元数据并发注册**：typeName 唯一索引，并发注册后到者 409。
 - **访问日志（审计配合）**：统一中间件出口记录 method / path / operator / trace_id / 请求参数（4KB 截断）/ 结果状态；schema 字段定义格式**预留 `sensitive: true` 标记**（暂不实现脱敏逻辑；启用时只改日志层一处，客户端契约不变）。
 - **X-Request-ID 透传**：所有响应回显 `X-Request-ID` 响应头（调用方与 zhuzhao 审计行关联排障用）。
-- **X-Operator 缺失兜底**：`"system"`（沿用 §15.4）；导入操作者 = 请求头操作者。
+- **X-Operator 缺失兜底**：`"system"`（沿用 §15.4）；导入操作者 = 请求头操作者。**X-Operator 入 AK/SK 签名覆盖**（2026-09-03 基线修订：不可伪造；utils `aksk` 验签随 M-A6）。
 - **Schema 缓存（多实例就绪）**：进程内 TTL 缓存（60s）或先不做缓存（元数据表 PK 查询足够便宜，当前量级可承受）——**不引入跨实例广播**。演进为低频操作，TTL 窗口内个别实例仍按旧 schema 校验（如新增 optional 字段后短暂 422）属预期行为，不额外处理。
 - **并发 Schema 演进**：元数据行带乐观锁——后到者 409，须重读最新定义后重提（**全量定义、非字段级 merge**；低频演进建议串行操作，沿用原 §6.4 语义）。
 - **导入期间并发写保护**：常规写路径设会话级 `lock_timeout`（约 5s，超时快速返回 409），避免请求在导入长事务的行锁上挂住、耗尽连接池；导入事务自身不设（utils `postgres.Config` 可加 LockTimeout 字段，记入 ADR-003 D1 遗留清单）。

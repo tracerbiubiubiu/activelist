@@ -64,6 +64,7 @@
 - **事件驱动移交 zhuzhao**：activelist 数据变更 → 事件由 **zhuzhao Asynq** 承担（zhuzhao 在业务操作点显式发布，L1 事件源不变，ADR-001/002 红线不变）；activelist **不再实现 Change Stream 事件捕获**（原 `docs/activelist.md` §7/§8 watcher 高可用、Resume Token、Redis fallback 全部移除）。进程 **3→1**（仅 apiserver）。
 - **审计（历史快照）移交 zhuzhao**：activelist 不写历史快照、不记业务语义日志；审计由 zhuzhao 侧记录（⚠️ 落点机制待定：建议 activelist 写接口返回变更后完整文档含 version（2026-09-03 方案 D 定稿后无 schemaVersion），zhuzhao 编排层写审计）。
 - **独立部署保留**：独立服务 + 独立库 + 独立数据库（故障隔离不变）；**zhuzhao 作对外网关**（网关尚未实现）调用 activelist。
+- **服务级通信鉴权（2026-09-03 基线修订，覆盖「零认证」原口径）**：activelist 对来自 zhuzhao 的调用**验 AK/SK HMAC 签名**（utils `aksk`，按调用方发 SK；明文 `X-Operator` 入签名覆盖——不可伪造；专用 network 保留为第二道防线）。用户侧仍零权限（不判定）。基线 SSOT = zhuzhao `docs/phase3/16-external-integration.md` §9。
 
 ### 覆盖上文条款对照
 | 上文条款 | 收敛后 |
@@ -193,3 +194,10 @@ col_<type>(
 2. **导入幂等 = 全量替换**：zhuzhao 侧 ADR-003 / roadmap / phase3-13 M-A 行仍为「upsert / 幂等 + 并发」泛化表述，需更新（含"不需要每类型业务唯一键"）。
 3. **roadmap.md activelist 小节两处滞后**：两层审计「已确认」（收敛后应为审计归 zhuzhao、activelist 只记技术日志）；事件总线对接旧表述（应为 zhuzhao 业务操作点显式发布）；「Phase 3 启动后」排期表述（应为 M-A 无链式依赖）。
 4. **zhuzhao 侧 ADR-003 工作区改动未提交**（路径引用 + 「SSOT 以 activelist 仓库为准」声明）。
+
+## 变更记录
+
+| 日期 | 变更 |
+|---|---|
+| 2026-09-03 | 建档（自 zhuzhao 镜像升格 SSOT）；同日职责收敛修订 + 需求澄清 + 存储定稿 |
+| 2026-09-03 | **AK/SK 基线修订**：服务间通信统一 AK/SK HMAC 签名（utils `aksk`），activelist 由「零认证」改为**验签**（M-A6 接线；X-Operator 入签名覆盖）；用户侧零权限不变；专用 network 降为第二道防线。基线 SSOT = zhuzhao 16 号 §9 |
