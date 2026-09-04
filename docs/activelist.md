@@ -7,6 +7,8 @@
 > 本文后续正文仍为完整历史方案，章节有效性如下：
 > - **继续有效（数据模型层）**：§4 技术栈、§5.1/§5.2（数据/元数据模型）、§6.1–6.5（Registry/Repository/Validation/Schema 演进/软删除状态机）、§10（并发控制）、§15（安全——其中 §15.1 认证口径已被 AK/SK 基线修订覆盖，见下）。
 > - **已被取代（仅作历史参考）**：§6.7（查询安全——按最终画像收窄为 id 分页 + 时间倒序）、§6.9（API 清单——以 [`implementation-plan.md`](./implementation-plan.md) §4 为准）；§6.8（错误码）语义仍沿用。**实现细节与本文件冲突时，一律以 implementation-plan.md 为准。**
+- **§4（技术栈）已废**：MongoDB/Redis/Asynq/asynqmon 行全部失效（收敛后 = gin + PG + zhuzhao-utils）；现行技术栈以 implementation-plan.md §5/§6 为准。
+- **§6.4 中 schemaVersion 演进流程已被方案 D 取代**（单一当前版本，见头部定稿补充）；仅并发演进 409 语义仍被引用（implementation-plan §7）。
 > - **移交 zhuzhao（不再由 activelist 实现）**：§5.3 历史集合（审计）、§7 事件驱动架构（Change Stream + Asynq worker）、§8 事件侧高可用（watcher HA / Redis fallback）、§12 可靠性矩阵（事件部分）、§13 流程四/五/六。
 > - **需复核调整**：§6.6（数据迁移）、§10.4（跨集合事务——事件/历史剥离后内部事务需求简化）、§14（注意事项）、§18/§19（部署/集成按 ADR-003 修订）。
 > - **日志**：activelist 只记技术/运行日志（请求级 + 错误级，含 `X-Request-ID`，不记业务语义、可脱敏），业务/审计日志由 zhuzhao 记；日志代码复用 = 从 zhuzhao `internal/pkg` 抽取的**共享 utils 项目**（见 ADR-003 修订）。
