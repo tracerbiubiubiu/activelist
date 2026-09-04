@@ -90,8 +90,10 @@ activelist/
 │   ├── storage/               # 每类型表管理（CREATE TABLE）+ CRUD + 乐观锁 + 软删
 │   ├── validation/            # 字段校验（int/string/列表、白名单、保留字段、schema 合法性）
 │   ├── transfer/              # 导入导出（全量替换、导出、序列 setval）
-│   ├── api/                   # HTTP handler + 中间件（requestid、AK/SK 验签、访问日志——统一出口）
-│   └── app/                   # 装配、启动、优雅停止
+│   ├── handler/               # HTTP 层（薄：绑定/映射，业务在 service——微服务结构基线）
+│   ├── service/               # 业务层（类型管理/CRUD 编排/导入导出事务）
+│   ├── middleware/            # requestid / 技术 access 日志（统一出口）/ AK-SK 验签
+│   └── app/                   # **Wire DI** + 装配、启动、优雅停止（对齐 zhuzhao/taskrunner）
 ├── migrations/                # 独立库独立编号（000001 起；与 zhuzhao 迁移号无关）
 ├── config/config.yaml
 ├── deploy/
