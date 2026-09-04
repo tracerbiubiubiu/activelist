@@ -101,6 +101,11 @@ activelist/
 
 命名注意：`internal/` 下包名避开 zhuzhao-utils 已有包名（`postgres` / `logger` 等），存储层用 `storage`。
 
+> **工程结构基线（2026-09-04 所有者拍板，zhuzhao 16 号 §9）**：以正式微服务标准建设——
+> **Wire DI**（装配收敛 `internal/app`）、**handler → service → repository 分层**、
+> yaml+env 配置、统一 Makefile 门禁（lint=vet+gofmt / test / build）、优雅启停；
+> taskrunner 已于同日完成同规格重构（其 commit ca1a283 可作结构参照）。
+
 ## 6. 配置（收敛后，取代 activelist.md §18.4 旧配置）
 
 ```yaml

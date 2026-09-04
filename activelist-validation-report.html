@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>activelist 项目文档验证报告</title>
+<style>
+  :root {
+    --text: #1A1B1C;
+    --sec: #6B7280;
+    --bg: #F4F3EE;
+    --card: #FFFFFF;
+    --border: #E4E3DD;
+    --accent: #3B82B6;
+    --ok: #52C41A;
+    --warn: #FAAD14;
+    --err: #EA6668;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 32px 16px; background: var(--bg); color: var(--text);
+         font-family: 'Roboto','PingFang SC','Segoe UI',Arial,sans-serif; line-height: 1.6; }
+  .wrap { max-width: 920px; margin: 0 auto; }
+  h1 { font-size: 24px; margin: 0 0 4px; }
+  .meta { color: var(--sec); font-size: 13px; margin-bottom: 24px; }
+  h2 { font-size: 18px; margin: 32px 0 12px; border-bottom: 1px solid var(--border); padding-bottom: 6px; }
+  h3 { font-size: 15px; margin: 20px 0 8px; }
+  .verdict { background: linear-gradient(135deg, rgba(82,196,26,.10), rgba(82,196,26,.18));
+             border: 1px solid var(--border); border-radius: 12px; padding: 14px 16px; margin-bottom: 8px; }
+  .verdict b { color: #2E7D32; }
+  table { width: 100%; border-collapse: collapse; background: var(--card); border-radius: 10px; overflow: hidden;
+          font-size: 13px; margin: 10px 0 18px; box-shadow: 0 1px 2px rgba(0,0,0,.04); }
+  th, td { border: 1px solid var(--border); padding: 8px 10px; text-align: left; vertical-align: top; }
+  th { background: #F0EFEA; font-weight: 600; font-size: 12.5px; }
+  .ok { color: var(--ok); font-weight: 700; }
+  .warn { color: #B78A00; font-weight: 700; }
+  .err { color: var(--err); font-weight: 700; }
+  .tag { display: inline-block; padding: 1px 8px; border-radius: 10px; font-size: 11px; font-weight: 600; }
+  .tag-ok { background: rgba(82,196,26,.14); color: #2E7D32; }
+  .tag-warn { background: rgba(250,173,20,.16); color: #9A6A00; }
+  .tag-err { background: rgba(234,102,104,.14); color: #C0392B; }
+  ul { margin: 6px 0 6px 20px; padding: 0; }
+  li { margin: 3px 0; }
+  code { background: #EFEEE9; padding: 1px 5px; border-radius: 4px; font-size: 12px; }
+  .note { font-size: 12.5px; color: var(--sec); margin-top: 18px; }
+  .kpi { display: flex; gap: 10px; flex-wrap: wrap; margin: 12px 0 18px; }
+  .kpi div { flex: 1 1 140px; min-width: 0; background: var(--card); border: 1px solid var(--border);
+             border-radius: 12px; padding: 12px; }
+  .kpi .n { font-size: 22px; font-weight: 700; }
+  .kpi .l { font-size: 12px; color: var(--sec); }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <h1>activelist 项目文档验证报告</h1>
+  <div class="meta">验证日期：2026-09-04 ｜ 验证对象：README.md + docs/（activelist.md / implementation-plan.md / activelist-review.md / ADR-003-integration-contract.md） ｜ 验证维度：计划一致性 · 边界清晰度 · 排期合理性</div>
+
+  <div class="verdict">
+    <b>总体结论：计划整体一致、边界清晰、排期可行，可开工。</b> 职责 / 进程 / 存储 / Schema 方案 D / 导入全量替换 / 审计归 zhuzhao 等核心口径在 5 份文档间高度一致；共享 utils（D1）已迁移验证通过，M-A1 可立即开工。
+    发现 <span class="tag tag-warn">2 项重要不一致</span>（AK/SK 验签口径、脱敏口径）、<span class="tag tag-warn">1 项中等标注问题</span>、<span class="tag tag-warn">1 项轻微滞后</span>，以及 <span class="tag tag-warn">2 项排期风险</span> 建议处理；均为表述/口径层面，不改变已定稿的技术方向。
+  </div>
+
+  <div class="kpi">
+    <div><div class="n ok">5</div><div class="l">文档（2 SSOT + README + 评审 + 契约）</div></div>
+    <div><div class="n" style="color:#2E7D32;">13</div><div class="l">核心口径跨文档一致项</div></div>
+    <div><div class="n warn">4</div><div class="l">待修正不一致点</div></div>
+    <div><div class="n warn">2</div><div class="l">排期风险提示</div></div>
+    <div><div class="n" style="color:#C0392B;">1</div><div class="l">前置阻塞已解除（D1）</div></div>
+  </div>
+
+  <h2>一、验证范围与方法</h2>
+  <p>逐份通读全部 5 份文档，并对 13 项核心口径做跨文档交叉比对（同一口径在 ≥4 处文档中的表述一致性），再核对该轮新增的 AK/SK 基线修订、审计落点机制、实现计划里程碑与 git 提交记录（<code>47e3644</code> 至 <code>cbf6956</code>）的对应关系。文档 SSOT 层级如下：</p>
+  <ul>
+    <li><b>设计 SSOT</b>：<code>docs/activelist.md</code> 头部（收敛声明 · 最终画像 · 设计定稿补充），正文为历史方案；</li>
+    <li><b>实现 SSOT</b>：<code>docs/implementation-plan.md</code>（M-A 目标/非目标、验收、里程碑、API 修订清单、代码目录、配置）；</li>
+    <li><b>集成契约 SSOT</b>：<code>docs/ADR-003-integration-contract.md</code>（2026-09-03 起以 activelist 仓库为准，zhuzhao 侧为镜像）；</li>
+    <li><b>评审（历史）</b>：<code>docs/activelist-review.md</code>（针对收敛前方案，数据模型侧仍可参考）；</li>
+    <li><b>门面</b>：<code>README.md</code>。</li>
+  </ul>
+
+  <h2>二、计划一致性核对（13 项）</h2>
+  <table>
+    <tr><th style="width:110px;">口径</th><th>文档间比对结论</th><th style="width:80px;">判定</th></tr>
+    <tr><td>职责定位</td><td>「动态数据模型平台」：类型注册 / Schema 演进 / 动态字段校验 / CRUD / 存储——README、activelist 头部、implementation-plan §1、ADR-003 收敛修订、review 注记 5 处一致</td><td><span class="ok">一致</span></td></tr>
+    <tr><td>进程</td><td>3→1（仅 apiserver），无状态、目标多实例部署；正文 §1.2 三进程已声明为历史方案</td><td><span class="ok">一致</span></td></tr>
+    <tr><td>存储</td><td>PostgreSQL，每类型一张表 + data JSONB；建类型建表、字段演进零 DDL；表结构不含 schema_version</td><td><span class="ok">一致</span></td></tr>
+    <tr><td>Schema 方案</td><td>方案 D（单一当前版本、数据行不带 schema_version、兼容零迁移、破坏性懒执行）全文档一致，review 确认 A/B/C 悬案关闭</td><td><span class="ok">一致</span></td></tr>
+    <tr><td>导入导出</td><td>导入幂等 = 全量替换（事务清表重灌、保留源 id、version 重置 1、setval；非 upsert）；导出含 id / created_at、含软删行</td><td><span class="ok">一致</span></td></tr>
+    <tr><td>查询能力</td><td>仅 id 分页（keyset，after_id）+ 创建时间倒序；无过滤 / 排序 / 聚合；implementation-plan §4 取代 §6.9 旧清单</td><td><span class="ok">一致</span></td></tr>
+    <tr><td>审计归属</td><td>审计归 zhuzhao（正本 = client 层同步写 activelist_audit_log + X-Request-ID 关联）；activelist 只记技术 / 运行日志，不写历史快照</td><td><span class="ok">一致</span></td></tr>
+    <tr><td>事件归属</td><td>activelist 不感知事件；zhuzhao 业务操作点显式发布（M-E taskrunner）；D4 无依赖</td><td><span class="ok">一致</span></td></tr>
+    <tr><td>数据库所有权</td><td>activelist 独立库（与工单库故障隔离）；ticket_events / activelist_audit_log 所有权在 zhuzhao</td><td><span class="ok">一致</span></td></tr>
+    <tr><td>网络隔离</td><td>双 network（activelist_internal + zhuzhao_to_activelist），仅 zhuzhao 可达 apiserver 8080；compose 双副本</td><td><span class="ok">一致</span></td></tr>
+    <tr><td>错误码</td><td>统一 {code, msg, data, detail.error_code}；implementation-plan 明确沿用 §6.8，FIELD_DEPRECATED / NEW_REQUIRED_FIELD / CONFLICT 语义保持</td><td><span class="ok">一致</span></td></tr>
+    <tr><td>存储加密</td><td>已拍板不做（内网 + 脱敏覆盖 + 审计一期不落字段值）；README / activelist / implementation-plan 一致（ADR-003 需求澄清节残留旧表述，见 F3）</td><td><span class="ok">一致*</span></td></tr>
+    <tr><td>备份</td><td>pg_dump 每日基线 + WAL 归档（PITR），导入前建议快照；implementation-plan A7 / M-A6 / §7 内部一致</td><td><span class="ok">一致</span></td></tr>
+  </table>
+
+  <h2>三、边界清晰度核查</h2>
+  <table>
+    <tr><th style="width:110px;">边界</th><th>定义</th><th style="width:80px;">判定</th></tr>
+    <tr><td>职责边界</td><td>implementation-plan §1 非目标清单明确排除：认证 / 事件 / 审计 / 历史快照 / 过滤排序聚合 / 嵌套关系 / 存储加密 / 多租户 / 物理删除</td><td><span class="ok">清晰</span></td></tr>
+    <tr><td>鉴权边界</td><td>用户侧零权限（不判定，zhuzhao 网关统一）；服务间通信 activelist 验 AK/SK HMAC 签名（utils aksk，M-A6 接线）——<b>但 README / activelist 头部仍写「零认证」，口径需统一</b>（见 F1）</td><td><span class="warn">需统一口径</span></td></tr>
+    <tr><td>事件边界</td><td>activelist 不感知事件；zhuzhao M-E taskrunner 业务操作点显式发布；工单非首数据源，接入契约由 activelist 侧定义</td><td><span class="ok">清晰</span></td></tr>
+    <tr><td>审计边界</td><td>zhuzhao 审计正本（activelist_audit_log 表，client 层同步写，失败本地重投队列）+ activelist 访问日志（slog 文件轮转 30–90 天），X-Request-ID 贯穿关联</td><td><span class="ok">清晰</span></td></tr>
+    <tr><td>日志边界</td><td>activelist 只记技术 / 运行日志（请求级 + 错误级，不记业务语义）；业务 / 审计日志归 zhuzhao</td><td><span class="ok">清晰</span></td></tr>
+    <tr><td>数据库所有权</td><td>activelist 独立数据库；事件表 ticket_events、审计表 activelist_audit_log 所有权均在 zhuzhao 侧</td><td><span class="ok">清晰</span></td></tr>
+    <tr><td>网络边界</td><td>apiserver 跨双 network，仅 zhuzhao 容器可达 8080；专用 network 作为 AK/SK 之外的二道防线</td><td><span class="ok">清晰</span></td></tr>
+  </table>
+
+  <h2>四、排期合理性核查</h2>
+  <table>
+    <tr><th style="width:130px;">维度</th><th>结论</th><th style="width:80px;">判定</th></tr>
+    <tr><td>排期归属</td><td>zhuzhao Phase 3 主线 M-A（activelist 独立实现），与其他里程碑（M0/M-E/M-HR/M-Mig）无链式依赖</td><td><span class="ok">合理</span></td></tr>
+    <tr><td>前置依赖</td><td>D1 共享 utils 已迁移完成并验证（10 包齐备，logger/postgres 可直接用），<b>M-A1 可立即开工</b></td><td><span class="ok">已解除</span></td></tr>
+    <tr><td>里程碑依赖链</td><td>M-A1（骨架，就绪）→ M-A2（类型注册建表）→ M-A3（CRUD）；M-A4（演进）/M-A5（导入导出）可并行于 M-A3 后；M-A6（日志+部署）依赖全部——串行 + 并行清晰</td><td><span class="ok">合理</span></td></tr>
+    <tr><td>跨里程碑阻塞</td><td>D2 E13 不阻塞开发、阻塞联调与上线（蓝图未开始）→ 排期尾部风险（见 R1）；D3 审计已拍板；D4 事件无依赖；D5 网络部署期</td><td><span class="warn">1 项风险</span></td></tr>
+    <tr><td>总量估算</td><td>1.5–3 人日（⚠️ 待校准）——六里程碑含 AK/SK 验签、百万行流式导入、备份策略，量级偏紧（见 R2）</td><td><span class="warn">建议校准</span></td></tr>
+    <tr><td>跨仓库同步</td><td>ADR-003 文末「待同步清单」4 项反向同步债（zhuzhao 镜像：方案 D、导入语义、roadmap 滞后、工作区未提交）——已透明列出，不阻塞开发</td><td><span class="ok">已知债务</span></td></tr>
+  </table>
+
+  <h2>五、发现与修正建议</h2>
+
+  <h3><span class="tag tag-warn">F1 · 重要</span> AK/SK 验签基线修订未同步到 README 与 activelist 头部</h3>
+  <p>ADR-003 于 2026-09-03 拍板「activelist 由零认证改为验 AK/SK HMAC 签名（utils aksk，M-A6 接线；用户侧零权限不变）」，implementation-plan M-A6 / §7 已同步；但 <code>README.md:7</code>「activelist 自身零认证」、<code>activelist.md:20</code> 最终画像「activelist 完全不管」、<code>activelist.md:1447</code> §15.1「不做认证（且 §15 被标注继续有效）」仍为旧口径。</p>
+  <p><b>建议</b>：统一为「用户侧零权限（不判定，zhuzhao 网关统一）；activelist 服务间验 AK/SK 签名（M-A6）」，同步修订 README 定位、activelist.md 头部与 §15 有效性标注。</p>
+
+  <h3><span class="tag tag-warn">F2 · 重要</span> 脱敏口径自相矛盾（验收标准 vs 拍板）</h3>
+  <p>已拍板「脱敏暂不做（风险接受 + schema sensitive 标记 + 统一日志出口两个钩子）」（ADR-003 审计落点、implementation-plan §1#7 / M-A6 / §7）；但 <code>implementation-plan.md:32</code> 验收项 <b>A6</b> 写「敏感值按规则脱敏」——A6 是 M-A 退出标准，直接与口径冲突；<code>activelist.md:23</code>「日志脱敏仍需」、<code>README.md:34</code>「脱敏」亦为旧表述。</p>
+  <p><b>建议</b>：A6 改为「预留 sensitive 标记 + 统一日志出口，脱敏逻辑暂不实现」；README 第 34 行、activelist.md 最终画像同步为「脱敏暂不做（钩子预留）」。</p>
+
+  <h3><span class="tag tag-warn">F3 · 中等</span> activelist.md 收敛声明「§6.7–6.9 继续有效」与「整块砍掉 / 取代」并存</h3>
+  <p>收敛声明第 8 行将 §6.7（查询安全）、§6.9（API）标为「继续有效」，但最终画像第 21 行说「§6.7 动态查询引擎整块砍掉」，implementation-plan §4 又说「API 清单取代 activelist.md §6.9 旧清单」。三处并存让读者无法单凭 activelist.md 判断实际口径。</p>
+  <p><b>建议</b>：头部补一句「实现口径一律以 implementation-plan.md 为准，正文章节有效性标注仅表示概念层语义保留」，避免「继续有效」与「砍掉/取代」并列歧义。</p>
+
+  <h3><span class="tag tag-warn">F4 · 轻微</span> ADR-003 需求澄清节残留旧口径</h3>
+  <p><code>ADR-003-integration-contract.md:90</code> 仍写「activelist 零认证」「存储加密暂不需要 ⚠️」，未同步第 67 行 AK/SK 基线修订与第 117 行定稿补充后的口径（存储加密已拍板不做）。语义接近、无实质冲突。</p>
+  <p><b>建议</b>：顺手更新该行（零认证→验签；存储加密→已拍板不做），与第 67 / 117 行一致。</p>
+
+  <h3><span class="tag tag-warn">R1 · 排期风险</span> E13（D2）未开始且阻塞联调与上线</h3>
+  <p>activelist 零用户认证、无网关不能对外暴露；E13 反代 + SetForwardHeaders 目前为蓝图（🚦）。若 activelist 按计划完成 M-A6 而 E13 未排期，联调/上线将卡住。</p>
+  <p><b>建议</b>：将 E13 纳入 zhuzhao 侧排期（哪怕靠后），并让 M-A6 交付前与 E13 就绪状态对齐；文档已标注「不阻塞开发、阻塞联调上线」，此点只需排期显式化。</p>
+
+  <h3><span class="tag tag-warn">R2 · 排期校准</span> 总量 1.5–3 人日偏紧</h3>
+  <p>六里程碑覆盖类型注册 / CRUD / Schema 演进 / 百万行流式导入与事务替换 / AK/SK 验签 / 多副本部署与备份，且验收含真实 PG 集成测试与门禁。1.5–3 人日（待校准）在含集成测试、多副本、备份前提下偏乐观，尤其导入与并发（lock_timeout / 幂等）部分。</p>
+  <p><b>建议</b>：按里程碑拆算人日（建议 5–8 人日量级），或至少将「待校准」在启动前完成一轮校准，避免里程碑超支影响 Phase 3 主链节奏。</p>
+
+  <h2>六、验证局限与下一步</h2>
+  <ul>
+    <li>本验证仅覆盖 activelist 仓库内 5 份文档；zhuzhao 侧镜像（ADR-003、roadmap、phase3/13）未在本仓库内，反向同步债按 ADR-003「待同步清单」确认存在，未逐一核验 zhuzhao 侧实际内容。</li>
+    <li>实现尚未开始（代码未落盘），本验证为「设计/计划层」一致性校验；M-A1 开工后建议按 implementation-plan §2 验收标准逐里程碑回验。</li>
+    <li>建议下一步：① 按 F1–F4 修正四处口径；② 将 R1（E13 排期）与 R2（人日校准）在启动前闭环；③ 清零「待同步清单」4 项跨仓库债务。</li>
+  </ul>
+
+  <div class="note">本报告为文档一致性验证产物，依据 2026-09-04 项目目录下 5 份文档与 git 提交记录（47e3644 → cbf6956）整理；未新增事实，未修改任何源文档。</div>
+
+</div>
+</body>
+</html>
