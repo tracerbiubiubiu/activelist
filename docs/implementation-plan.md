@@ -39,7 +39,7 @@
 
 | 里程碑 | 内容 | 依赖 | 退出标准 |
 |--------|------|------|---------|
-| M-A1 骨架 | go.mod（引 zhuzhao-utils）、config 加载、migrations 000001（元数据表）、docker-compose（PG）、healthz/readyz、优雅停止 | ✅ 已就绪（2026-09-03 验证，见 ADR-003 D1 验证记录）——**可立即开工** | 服务起 + 健康检查过 |
+| M-A1 骨架 | go.mod（引 zhuzhao-utils）、config 加载（viper yaml+env）、**`internal/app` Wire DI 装配 + 优雅停止**（工程结构基线 §5 注）、**Makefile 门禁（lint=vet+gofmt / test / build）**、migrations 000001（元数据表）、docker-compose（PG）、healthz/readyz | ✅ 前置已就绪（2026-09-03 验证，见 ADR-003 D1 验证记录）——**可立即开工**；结构参照 taskrunner ca1a283 | 服务起 + 健康检查过 + lint/test 绿 |
 | M-A2 类型注册 + 建表 | 元数据表（类型 + 当前 schema + 变更记录）、CREATE TABLE、字段定义校验（int/string/列表、白名单、保留字段） | M-A1 | A1 |
 | M-A3 CRUD | 插入 / 列表（keyset 分页 + created_at 倒序）/ 单查 / 更新（读-合并-全量校验-乐观锁）/ 软删 / 恢复 | M-A2 | A2 / A4 |
 | M-A4 Schema 演进 | 演进端点 + 方案 D 语义（兼容 / 破坏性懒执行）+ schema 变更历史查询 | M-A2 | A3 |
@@ -127,9 +127,14 @@ business:
   page_size_default: 20
   page_size_max: 100
   import_batch_rows: 1000    # 全量替换导入同事务内的分批行数
+
+security:                     # AK/SK 验签（基线 §9，M-A6 中间件；形态对齐 taskrunner）
+  callers:                    # 预期调用方 AK→SK 密钥环（当前唯一调用方 zhuzhao）
+    zhuzhao: ""               # env ACTIVELIST_CALLER_ZHUZHAO_SK（空密钥环拒绝启动 fail-closed）
 ```
 
 旧配置中的 mongo / redis / asynq / log_db 段全部移除（依赖已砍）。
+注：activelist 无出站调用 zhuzhao 的场景 → 只需验签密钥环（callers），无 self 签名身份。
 
 ## 7. 实现注意点
 
