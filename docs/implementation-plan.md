@@ -18,7 +18,7 @@
 | 6 | 导入导出 | JSON；导入 = **全量替换**（单事务清表重灌、保留源 id、version 重置 1、setval 序列）；幂等；并发由乐观锁保护 |
 | 7 | 技术日志 | slog 文件日志（复用 zhuzhao-utils `logger`）；请求级（访问日志记 method/path/operator/trace_id/参数 4KB 截断）+ 错误级；含 `X-Request-ID`；**脱敏暂不做**（已拍板，预留 schema `sensitive` 标记 + 统一日志出口两个钩子，见 ADR-003 审计节） |
 
-**非目标**（明确不做，边界）：认证/鉴权（zhuzhao 网关统一）、事件发布（zhuzhao 业务操作点显式发布）、业务审计（zhuzhao 侧记录）、历史快照、过滤/排序/聚合查询、嵌套对象/关系/公式字段、存储加密（⚠️ 暂缓，上线前复核）、多租户、物理删除 API。
+**非目标**（明确不做，边界）：用户认证/鉴权（zhuzhao 网关统一；**服务间 AK/SK 验签除外**——M-A6 交付项）、事件发布（zhuzhao 业务操作点显式发布）、业务审计（zhuzhao 侧记录）、历史快照、过滤/排序/聚合查询、嵌套对象/关系/公式字段、存储加密（**已拍板不做**，2026-09-03）、多租户、物理删除 API。
 
 ## 2. 验收标准（M-A 退出标准）
 
@@ -29,7 +29,7 @@
 | A3 | Schema 演进 | 加 optional 字段后旧数据零迁移可读可写；加 required 字段后新插入强制校验、旧数据更新返回 422（错误信息含迁移指引） |
 | A4 | 乐观锁 | 并发更新同一行 → 恰一成功，其余 409；version 不匹配更新 409 |
 | A5 | 导入导出 | 导出 JSON（含 id / status / created_at）→ 清空环境 → 导入 → 数据一致；**重导同一文件结果一致（幂等）**；序列正确（后续插入不冲突）；导入期间并发写按定稿行为（阻塞至提交 / 跨导入读改写 409） |
-| A6 | 日志 | 请求级 + 错误级日志含 `X-Request-ID` 与 `X-Operator`；敏感值按规则脱敏；不记业务语义内容 |
+| A6 | 日志 | 请求级 + 错误级日志含 `X-Request-ID` 与 `X-Operator`；**脱敏暂不做**（已拍板，预留 schema `sensitive` 标记 + 统一日志出口钩子，见 ADR-003 审计节）；不记业务语义内容 |
 | A7 | 部署 | docker-compose 双 network（`activelist_internal` + `zhuzhao_to_activelist`）、**apiserver 双副本**；`/healthz` `/readyz`（readyz 检 PG）；优雅停止（SIGTERM 排空，重启单副本服务不中断）；**migrations 全库只执行一次**（init 容器 / CI 步骤，工具自带 advisory lock，多副本并发启动不重复执行）；备份任务按日跑通 |
 | 门禁 | 工程 | `make lint` / `make test` 全绿；CRUD + 演进 + 导入导出有针对真实 PG 的集成测试 |
 
@@ -90,7 +90,7 @@ activelist/
 │   ├── storage/               # 每类型表管理（CREATE TABLE）+ CRUD + 乐观锁 + 软删
 │   ├── validation/            # 字段校验（int/string/列表、白名单、保留字段、schema 合法性）
 │   ├── transfer/              # 导入导出（全量替换、导出、序列 setval）
-│   ├── api/                   # HTTP handler + 中间件（requestid、技术 access 日志、脱敏）
+│   ├── api/                   # HTTP handler + 中间件（requestid、AK/SK 验签、访问日志——统一出口）
 │   └── app/                   # 装配、启动、优雅停止
 ├── migrations/                # 独立库独立编号（000001 起；与 zhuzhao 迁移号无关）
 ├── config/config.yaml

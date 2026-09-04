@@ -87,7 +87,7 @@
 
 ### 需求澄清 · 最终画像与存储引擎（2026-09-03 追加）
 
-经需求逐条澄清，收敛后真实需求画像（完整表见 `docs/activelist.md` 收敛声明·最终画像）：任意自定义类型、字段= `int`/`string`/二者列表（无嵌套/关系）；activelist 零认证；查询=仅 id 分页 + 时间倒序；量级百万行内；**敏感高危数据 → 可靠**（存储加密暂不需要 ⚠️、日志脱敏仍需）；低频 Schema 演进；软删保留；导入导出 JSON + 幂等 + 并发；id 自增。
+经需求逐条澄清，收敛后真实需求画像（完整表见 `docs/activelist.md` 收敛声明·最终画像）：任意自定义类型、字段= `int`/`string`/二者列表（无嵌套/关系）；activelist 用户侧零权限 + 服务间 AK/SK 验签（2026-09-03 基线修订，原「零认证」口径已覆盖）；查询=仅 id 分页 + 时间倒序；量级百万行内；**敏感高危数据 → 可靠**（存储加密已拍板不做、日志脱敏暂不做——均 2026-09-03 定稿，原文「暂不需要 ⚠️ / 仍需」已过时）；低频 Schema 演进；软删保留；导入导出 JSON + 幂等 + 并发；id 自增。
 
 **存储引擎评审（PG 仍为最优，收敛后更无悬念）**：
 
@@ -128,7 +128,7 @@ col_<type>(
 | # | 能力需求 | zhuzhao 侧载体 | 状态 | 对 activelist 的阻塞关系 |
 |---|---------|---------------|------|------------------------|
 | D1 | 共享 utils：`logger` / `postgres`（硬依赖），`errcode` / `response` / `jsonutil` / `validate` / `crypto`（按需） | zhuzhao-utils 独立项目 | ✅ **迁移完成，已验证（2026-09-03）** | **已解除——M-A1 可开工** |
-| D2 | 反向代理 + header 透传（E13：`app/service/proxy/` + `SetForwardHeaders` + Restrict 资源 `activelist` + accesslog 跳过 body） | zhuzhao E13 | 蓝图 🚦（未开始） | **不阻塞开发；阻塞联调与上线**（activelist 零认证，无网关不能对外暴露） |
+| D2 | 反向代理 + header 透传（E13：`app/service/proxy/` + `SetForwardHeaders` + Restrict 资源 `activelist` + accesslog 跳过 body） | zhuzhao E13 | 蓝图 🚦（未开始） | **不阻塞开发；阻塞联调与上线**（activelist 用户侧零权限，无网关不能对外暴露） |
 | D3 | 业务审计记录 | zhuzhao client 封装层 + `activelist_audit_log` 表 | ✅ **已拍板**（2026-09-03，机制见下方专节：双侧记录 + X-Request-ID 关联；脱敏暂不做＝风险接受） | 已解除阻塞（zhuzhao 侧实现项：client 层 + 审计表；activelist 侧义务已定稿） |
 | D4 | 事件发布（zhuzhao 业务操作点显式发布；工单非首数据源，接入契约由 activelist 侧定义） | zhuzhao M-E taskrunner | 蓝图 🚦 | **无依赖**（activelist 不感知事件） |
 | D5 | 网络隔离（双 network，仅 zhuzhao 容器可达 apiserver 8080） | 双方部署约定 | activelist 自理 docker-compose | 部署期事项（M-A6） |
@@ -138,7 +138,7 @@ col_<type>(
 - ✅ 10 包齐备（crypto / errcode / jsonutil / jwt / logger / postgres / redis / response / validate），module = `github.com/tracerbiubiubiu/zhuzhao-utils`，已推送远端。
 - ✅ `logger`（`logger.New(logger.Config)` → `*slog.Logger`，自带 Config，无 zhuzhao config 耦合）、`postgres`（`postgres.New(postgres.Config)` → `*pgxpool.Pool` + cleanup，`ApplyDefaults`/`DSN`/statement_timeout/application_name 齐备）——activelist 可直接使用。
 - ✅ `errcode`/`response` API 满足统一响应包装（`OK/OKPage/Fail/Error/Conflict/...`；activelist 的 `detail.error_code` 字段自行适配）。
-- ✅ zhuzhao 主仓已切换 import；`internal/pkg/errcode` 为**转发 shim**（业务码 20000 起留 zhuzhao、框架码进 utils、类型别名统一——有意分层，非双份维护）；`internal/pkg/resource` 留 zhuzhao（权限域绑定，activelist 零认证不需要）。
+- ✅ zhuzhao 主仓已切换 import；`internal/pkg/errcode` 为**转发 shim**（业务码 20000 起留 zhuzhao、框架码进 utils、类型别名统一——有意分层，非双份维护）；`internal/pkg/resource` 留 zhuzhao（权限域绑定，activelist 无用户权限判定不需要）。另：utils 已含 `aksk` 包（2026-09-03 AK/SK 基线修订新增，M-A6 验签中间件依赖已就绪）。
 - ⚠️ 遗留（不阻塞，utils 侧可选补充）：① `logger` / `postgres` 无单测（其余包有）；② `postgres.Config` 可加 `LockTimeout` 字段（activelist 导入期间的常规写快速失败需要；不加则 activelist 以会话级 `SET lock_timeout` 自理）。
 
 ## 审计落点机制（已拍板 2026-09-03：双侧记录 + request_id 关联；脱敏暂不做）

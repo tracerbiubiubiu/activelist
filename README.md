@@ -4,7 +4,7 @@
 
 ## 定位
 
-用户可自定义数据类型 / 动态字段（`int`、`string` 及二者的列表）的高可靠数据存储服务。作为**独立服务 + 独立库 + 独立数据库**部署，由 zhuzhao 网关统一鉴权后内网调用（**activelist 自身零认证**）。
+用户可自定义数据类型 / 动态字段（`int`、`string` 及二者的列表）的高可靠数据存储服务。作为**独立服务 + 独立库 + 独立数据库**部署，由 zhuzhao 网关统一鉴权后内网调用（**用户侧零权限 + 服务间 AK/SK 验签**——2026-09-03 基线修订，基线 SSOT = zhuzhao `docs/phase3/16-external-integration.md` §9）。
 
 ## 当前形态（2026-09-03 职责收敛 + 需求澄清）
 
@@ -31,7 +31,7 @@
 
 - **部署**：独立服务，内网双 network 隔离（`activelist_internal` + `zhuzhao_to_activelist`），仅 zhuzhao 容器可达
 - **调用**：zhuzhao 网关统一 JWT / Casbin / Restrict 鉴权，透传 `X-Operator`（操作者）、`X-Request-ID`（链路追踪）
-- **日志**：activelist 只记技术 / 运行日志（请求级 + 错误级，含 `X-Request-ID`，脱敏）；业务 / 审计日志由 zhuzhao 记录
+- **日志**：activelist 只记技术 / 运行日志（请求级 + 错误级，含 `X-Request-ID`；脱敏暂不做——钩子预留）；业务 / 审计日志由 zhuzhao 记录
 
 ## 状态
 
