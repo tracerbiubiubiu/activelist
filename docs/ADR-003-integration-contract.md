@@ -62,7 +62,7 @@
 ### 收敛后 activelist 定位
 - **activelist = 动态数据模型平台**（唯一职责）：类型注册 / Schema 演进 / 动态字段校验 / 数据 CRUD / 存储（乐观锁、软删除保留）。
 - **事件驱动移交 zhuzhao**：activelist 数据变更 → 事件由 **zhuzhao Asynq** 承担（zhuzhao 在业务操作点显式发布，L1 事件源不变，ADR-001/002 红线不变）；activelist **不再实现 Change Stream 事件捕获**（原 `docs/activelist.md` §7/§8 watcher 高可用、Resume Token、Redis fallback 全部移除）。进程 **3→1**（仅 apiserver）。
-- **审计（历史快照）移交 zhuzhao**：activelist 不写历史快照、不记业务语义日志；审计由 zhuzhao 侧记录（⚠️ 落点机制待定：建议 activelist 写接口返回变更后完整文档含 version（2026-09-03 方案 D 定稿后无 schemaVersion），zhuzhao 编排层写审计）。
+- **审计（历史快照）移交 zhuzhao**：activelist 不写历史快照、不记业务语义日志；审计由 zhuzhao 侧记录（✅ **落点机制已拍板（2026-09-03）**：见下方「审计落点机制」专节——zhuzhao client 封装层同步写 `activelist_audit_log` + 本地重投队列；activelist 义务 = 写接口返回变更后完整文档）。
 - **独立部署保留**：独立服务 + 独立库 + 独立数据库（故障隔离不变）；**zhuzhao 作对外网关**（网关尚未实现）调用 activelist。
 - **服务级通信鉴权（2026-09-03 基线修订，覆盖「零认证」原口径）**：activelist 对来自 zhuzhao 的调用**验 AK/SK HMAC 签名**（utils `aksk`，按调用方发 SK；明文 `X-Operator` 入签名覆盖——不可伪造；专用 network 保留为第二道防线）。用户侧仍零权限（不判定）。基线 SSOT = zhuzhao `docs/phase3/16-external-integration.md` §9。
 
@@ -70,7 +70,7 @@
 | 上文条款 | 收敛后 |
 |---|---|
 | 「审计日志分工（两层）」：网关层跳过 body + **activelist 业务层自脱敏 accesslog**（§52–56） | **修订**：审计/业务日志归 **zhuzhao**；activelist 只记**技术/运行日志**（请求级 + 错误级，不记业务语义、可脱敏）；`X-Request-ID` 贯穿两层关联排查 |
-| 待办 **G4 两层审计** | **修订**：改为「zhuzhao 侧审计记录」（activelist 写接口返回变更后文档供审计，⚠️ 口径待定） |
+| 待办 **G4 两层审计** | **修订并关闭**：zhuzhao 侧审计记录（✅ 落点机制已拍板 2026-09-03，见「审计落点机制」专节：client 封装层 + `activelist_audit_log`） |
 | 待办 **G1/G2**（Change Stream→Outbox/逻辑复制改造；activelist 变更事件桥接汇入 L1） | **简化**：activelist 侧不再有事件捕获职责；事件 = zhuzhao 调 activelist 成功后**业务操作点显式发布**（G2 含义从「activelist 变更事件汇入」改为「zhuzhao 调用后发布事件」） |
 | 建议阶段「Phase 3 启动后（L1+Asynq 就绪后）」 | 不变（L1/Asynq 就绪后，事件侧已由 zhuzhao 承担） |
 | 转 PG 收益「写主数据 + 写历史快照 + 落事件 可用 PG 事务原子」 | **减弱**：历史快照/事件外置后，activelist 内部只剩主数据写，事务需求大幅简化 |
@@ -165,11 +165,11 @@ col_<type>(
 
 ## 待办
 
-> 现行效力注（2026-09-02/03）：**E13 / G1 / G3 为架构蓝图保留 🚦**（§22.3/§23.2，由 activelist 独立项目成型触发）；**G4 两层审计已被上方收敛修订覆盖**（审计归 zhuzhao，落点机制待定）；G2 事件桥接由「zhuzhao 业务操作点显式发布」取代。
+> 现行效力注（2026-09-02/03）：**E13 / G1 / G3 为架构蓝图保留 🚦**（§22.3/§23.2，由 activelist 独立项目成型触发）；**G4 已关闭**（审计归 zhuzhao，落点机制已拍板——见「审计落点机制」专节）；G2 事件桥接由「zhuzhao 业务操作点显式发布」取代。
 
 - **E13（zhuzhao 侧）**：反向代理模块 `app/service/proxy/` + `SetForwardHeaders` 中间件 + Restrict 资源 `activelist` + accesslog 对 `/api/v1/data/*` 跳过 body（仅记 HTTP 元信息）。
 - **G1（activelist 侧，转 PG）**：Mongo → PG 迁移设计（动态集合→分区表/每类型表；Change Stream→Outbox/逻辑复制；历史快照落 PG 表）。**含日志 writer 迁移**：§19.7.1 的 `mongo_writer.go` / `NewMongoWriteSyncer` 需改为 PG writer，否则转 PG 后日志仍依赖 Mongo。
-- **G2（集成缺口）**：activelist 变更事件 → zhuzhao 统一事件目录（L1 事件源）的桥接设计：明确为 **activelist → zhuzhao 网关 HTTP 事件摄入端点（`X-Operator` 鉴权）→ zhuzhao 自写 `ticket_events`**，数据库所有权留在 zhuzhao；activelist 与 zhuzhao 各自独立 Asynq/Redis，不共享执行器后端。
+- **G2（集成缺口）**：~~activelist 变更事件 → zhuzhao 统一事件目录（L1 事件源）的桥接设计~~（已被收敛修订取代：activelist 无事件职责；事件 = zhuzhao **业务操作点显式发布**——client 封装层对 activelist 写操作成功后发布，非「网关事件摄入端点」路径）。
 - **G3（zhuzhao 工单侧）**：多源 ingress 适配器设计（手动 + activelist + 其他模块）。
 - **G4（审计层，已确认）**：两层审计落地——zhuzhao 网关层（E13 跳过 body）+ activelist 业务层（自脱敏 accesslog）。
 
@@ -182,9 +182,9 @@ col_<type>(
 
 ## 关联文档
 - 本仓库 `docs/activelist.md` §3（设计原则）、§7.2（Change Stream）、§18（部署）、§19（与 zhuzhao 集成）——**2026-09-03 迁移至独立仓库**（`github.com/tracerbiubiubiu/activelist`），SSOT 以 activelist 仓库为准
-- `adr/ADR-001-event-mechanism-l1-steady-state.md`（L1 事件源长期稳态）
-- `adr/ADR-002-asynq-async-task-executor.md`（Asynq 作为异步任务执行器，可共用 Redis 实例；注意 Asynq 不当事件总线，事件源仍是 L1）
-- `docs/roadmap.md`（外部能力集成：activelist 小节）
+- zhuzhao 仓库 `docs/adr/ADR-001-event-mechanism-l1-steady-state.md`（L1 事件源长期稳态）
+- zhuzhao 仓库 `docs/adr/ADR-002-asynq-async-task-executor.md`（Asynq 作为异步任务执行器；注意 Asynq 不当事件总线，事件源仍是 L1）
+- zhuzhao 仓库 `docs/roadmap.md`（外部能力集成：activelist 小节；以上三份均不在本仓库）
 
 ## 待同步清单（activelist → zhuzhao 镜像，反向同步债）
 

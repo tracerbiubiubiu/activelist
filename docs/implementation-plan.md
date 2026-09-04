@@ -87,7 +87,7 @@ activelist/
 ├── internal/
 │   ├── config/                # 配置加载（${VAR} 环境变量展开，对齐 zhuzhao 模式）
 │   ├── meta/                  # 类型注册 + Schema 定义/演进（元数据表读写）
-│   ├── storage/               # 每类型表管理（CREATE TABLE）+ CRUD + 乐观锁 + 软删
+│   ├── repository/            # 每类型表管理（CREATE TABLE）+ CRUD + 乐观锁 + 软删（层名对齐基线；与 utils postgres 不同包路径不冲突）
 │   ├── validation/            # 字段校验（int/string/列表、白名单、保留字段、schema 合法性）
 │   ├── transfer/              # 导入导出（全量替换、导出、序列 setval）
 │   ├── handler/               # HTTP 层（薄：绑定/映射，业务在 service——微服务结构基线）
@@ -101,7 +101,7 @@ activelist/
 └── Makefile                   # lint / test / test-integration / build
 ```
 
-命名注意：`internal/` 下包名避开 zhuzhao-utils 已有包名（`postgres` / `logger` 等），存储层用 `storage`。
+命名注意：`internal/` 下包名避开与 zhuzhao-utils 同短名引起的 import 混淆；数据访问层统一 `repository`（基线层名，taskrunner 同款）。
 
 > **工程结构基线（2026-09-04 所有者拍板，zhuzhao 16 号 §9）**：以正式微服务标准建设——
 > **Wire DI**（装配收敛 `internal/app`）、**handler → service → repository 分层**、
@@ -131,6 +131,8 @@ business:
 security:                     # AK/SK 验签（基线 §9，M-A6 中间件；形态对齐 taskrunner）
   callers:                    # 预期调用方 AK→SK 密钥环（当前唯一调用方 zhuzhao）
     zhuzhao: ""               # env ACTIVELIST_CALLER_ZHUZHAO_SK（空密钥环拒绝启动 fail-closed）
+
+tz: Asia/Shanghai             # 容器时区（基线 §9，compose environment TZ + 镜像 tzdata）
 ```
 
 旧配置中的 mongo / redis / asynq / log_db 段全部移除（依赖已砍）。
@@ -141,14 +143,14 @@ security:                     # AK/SK 验签（基线 §9，M-A6 中间件；形
 - **全量替换导入**：单事务内 `DELETE` 全表（含软删行）→ 分批 INSERT（`import_batch_rows`）→ `setval` 至 max(id)；百万行级注意 WAL 膨胀与锁时长，导入为低频运维级操作可接受，事务内分批控制内存。
 - **导入大文件**：百万行 JSON 需**流式解析**（JSON 数组流式解码或 NDJSON），避免整包载入内存；HTTP body 大小上限与 `write_timeout` 配套调整。
 - **导出必须含软删行**（带 status），否则导出→导入闭环会丢软删数据，违背「软删保留」。
-- **分页**：keyset（`WHERE id > $1 ORDER BY created_at DESC, id DESC LIMIT n`）+ `(created_at DESC, id DESC)` 索引；offset 深翻页在百万行下不可用。
+- **分页**：keyset 游标按**完整排序键**比较（审计修正 2026-09-04：原 `WHERE id > $1` 在 id 序 ≠ created_at 序时跳行/重行——导入保留源 id 与 created_at 后必然失序）：`WHERE (created_at, id) < ($1, $2) ORDER BY created_at DESC, id DESC LIMIT n`，游标 = 上一行 (created_at, id) 二元组（`after_id` 扩为 created_at+id 复合游标）；索引 `(created_at DESC, id DESC)`；offset 深翻页在百万行下不可用。
 - **元数据并发注册**：typeName 唯一索引，并发注册后到者 409。
 - **访问日志（审计配合）**：统一中间件出口记录 method / path / operator / trace_id / 请求参数（4KB 截断）/ 结果状态；schema 字段定义格式**预留 `sensitive: true` 标记**（暂不实现脱敏逻辑；启用时只改日志层一处，客户端契约不变）。
 - **X-Request-ID 透传**：所有响应回显 `X-Request-ID` 响应头（调用方与 zhuzhao 审计行关联排障用）。
 - **X-Operator 缺失兜底**：`"system"`（沿用 §15.4）；导入操作者 = 请求头操作者。**X-Operator 入 AK/SK 签名覆盖**（2026-09-03 基线修订：不可伪造；utils `aksk` 验签随 M-A6）。
 - **Schema 缓存（多实例就绪）**：进程内 TTL 缓存（60s）或先不做缓存（元数据表 PK 查询足够便宜，当前量级可承受）——**不引入跨实例广播**。演进为低频操作，TTL 窗口内个别实例仍按旧 schema 校验（如新增 optional 字段后短暂 422）属预期行为，不额外处理。
 - **并发 Schema 演进**：元数据行带乐观锁——后到者 409，须重读最新定义后重提（**全量定义、非字段级 merge**；低频演进建议串行操作，沿用原 §6.4 语义）。
-- **导入期间并发写保护**：常规写路径设会话级 `lock_timeout`（约 5s，超时快速返回 409），避免请求在导入长事务的行锁上挂住、耗尽连接池；导入事务自身不设（utils `postgres.Config` 可加 LockTimeout 字段，记入 ADR-003 D1 遗留清单）。
+- **导入期间并发写保护**：常规写路径设会话级 `lock_timeout`（约 5s，超时快速返回 409），避免请求在导入长事务的行锁上挂住、耗尽连接池；导入事务自身不设（utils `postgres.Config` 可加 LockTimeout 字段，记入 ADR-003 D1 遗留清单）。**全量替换的并发 INSERT 漏洞（审计修正 2026-09-04）**：`DELETE` 全表只锁既有行，事务期间并发 INSERT 的新行不被阻塞、替换提交后存活——破坏全量替换语义与 A5 幂等；导入事务开头须取锁：`LOCK TABLE <tbl> IN SHARE ROW EXCLUSIVE MODE`（阻塞并发写不阻塞读）或按类型 `pg_advisory_xact_lock`（兼防两并发导入互踩）。
 - **Insert 重试重复（已知限制，接受）**：无业务唯一键 + 自增 id，调用方重试 POST 会产生重复行；调用方为 zhuzhao 统一 client 层，如需可后置加 `Idempotency-Key`（RFC draft / Stripe 模式），activelist 侧不实现。
 - **备份（敏感高危数据必须）**：activelist PG 每日基线备份（pg_dump）+ WAL 归档（PITR）；导入等高危操作前建议先快照。备份策略随 M-A6 写入部署文档。
 - **保留字段**：`id` / `version` / `status` / `created_at` / `updated_at` / `created_by` / `updated_by` / `data` 禁止用户 schema 使用。
@@ -162,3 +164,5 @@ security:                     # AK/SK 验签（基线 §9，M-A6 中间件；形
 | O2 | utils 依赖面核对 | ✅ 已验证（2026-09-03） | `logger`/`postgres` 已 config 解耦可直接使用；`errcode`/`response` API 满足统一响应包装（`detail.error_code` 字段 activelist 侧自行适配）；遗留不阻塞项：utils 的 `logger`/`postgres` 无单测（可选补，见 ADR-003 D1 验证记录） |
 | O3 | 存储加密 | ✅ 已拍板不做（2026-09-03） | 内网部署 + 日志脱敏 + 审计一期不落字段值已覆盖当前风险评估；若未来跨网部署或合规要求变化再启用（届时另立决策） |
 | O4 | E13 反代 | 🚦 蓝图 | 不阻塞开发；阻塞联调与上线 |
+
+> **2026-09-04 全仓审计修正**：① keyset 分页谓词改完整排序键比较（原 `id > $1` 在导入保留源 id/created_at 后必失序）；② 导入全量替换补表锁/advisory lock（DELETE 只锁既有行，并发 INSERT 漏过破坏替换语义）；③ TZ 入配置；④ `storage`→`repository` 对齐基线层名；⑤ ADR-003 三处「落点机制待定」残留关闭 + G2 死机制划线 + 关联文档断链加仓库限定。
