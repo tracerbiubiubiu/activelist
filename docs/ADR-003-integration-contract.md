@@ -130,12 +130,12 @@ col_<type>(
 | D1 | 共享 utils：`logger` / `postgres`（硬依赖），`errcode` / `response` / `jsonutil` / `validate` / `crypto`（按需） | zhuzhao-utils 独立项目 | ✅ **迁移完成，已验证（2026-09-03）** | **已解除——M-A1 可开工** |
 | D2 | 反向代理 + header 透传（E13：`app/service/proxy/` + `SetForwardHeaders` + Restrict 资源 `activelist` + accesslog 跳过 body） | zhuzhao E13 | 蓝图 🚦（未开始） | **不阻塞开发；阻塞联调与上线**（activelist 用户侧零权限，无网关不能对外暴露） |
 | D3 | 业务审计记录 | zhuzhao client 封装层 + `activelist_audit_log` 表 | ✅ **已拍板**（2026-09-03，机制见下方专节：双侧记录 + X-Request-ID 关联；脱敏暂不做＝风险接受） | 已解除阻塞（zhuzhao 侧实现项：client 层 + 审计表；activelist 侧义务已定稿） |
-| D4 | 事件发布（zhuzhao 业务操作点显式发布；工单非首数据源，接入契约由 activelist 侧定义） | zhuzhao M-E taskrunner | 蓝图 🚦 | **无依赖**（activelist 不感知事件） |
+| D4 | 事件发布（zhuzhao 业务操作点显式发布；工单非首数据源，接入契约由 activelist 侧定义） | zhuzhao M-E taskrunner（平台已就绪：M1/M2 完成 2026-09-03，见 taskrunner 仓库） | ⏳ 平台就绪；activelist 事件接入待其成型 | **无依赖**（activelist 不感知事件） |
 | D5 | 网络隔离（双 network，仅 zhuzhao 容器可达 apiserver 8080） | 双方部署约定 | activelist 自理 docker-compose | 部署期事项（M-A6） |
 
 **D1 验证记录（2026-09-03，activelist 侧核对）**：
 
-- ✅ 10 包齐备（crypto / errcode / jsonutil / jwt / logger / postgres / redis / response / validate），module = `github.com/tracerbiubiubiu/zhuzhao-utils`，已推送远端。
+- ✅ 10 包齐备（aksk / crypto / errcode / jsonutil / jwt / logger / postgres / redis / response / validate），module = `github.com/tracerbiubiubiu/zhuzhao-utils`，已推送远端。
 - ✅ `logger`（`logger.New(logger.Config)` → `*slog.Logger`，自带 Config，无 zhuzhao config 耦合）、`postgres`（`postgres.New(postgres.Config)` → `*pgxpool.Pool` + cleanup，`ApplyDefaults`/`DSN`/statement_timeout/application_name 齐备）——activelist 可直接使用。
 - ✅ `errcode`/`response` API 满足统一响应包装（`OK/OKPage/Fail/Error/Conflict/...`；activelist 的 `detail.error_code` 字段自行适配）。
 - ✅ zhuzhao 主仓已切换 import；`internal/pkg/errcode` 为**转发 shim**（业务码 20000 起留 zhuzhao、框架码进 utils、类型别名统一——有意分层，非双份维护）；`internal/pkg/resource` 留 zhuzhao（权限域绑定，activelist 无用户权限判定不需要）。另：utils 已含 `aksk` 包（2026-09-03 AK/SK 基线修订新增，M-A6 验签中间件依赖已就绪）。
@@ -188,12 +188,12 @@ col_<type>(
 
 ## 待同步清单（activelist → zhuzhao 镜像，反向同步债）
 
-本文件升格 SSOT 后，以下 activelist 侧定稿尚未同步到 zhuzhao 侧镜像：
+本文件升格 SSOT 后，以下 activelist 侧定稿需反向同步到 zhuzhao 侧镜像。**2026-09-04 核验：均已同步/闭环**（zhuzhao 侧 ADR-003 镜像已按 SSOT 更新、roadmap 已修正「零认证」/「aksk 新增规划」表述、D4 载体状态已更新）。后续 activelist 侧定稿变更时按本清单反向同步。
 
-1. **方案 D 定稿**：zhuzhao ADR-003 sketch 仍含 `schema_version INT`（§5.4 方案 B），需删除并注明方案 D 采纳。
-2. **导入幂等 = 全量替换**：zhuzhao 侧 ADR-003 / roadmap / phase3-13 M-A 行仍为「upsert / 幂等 + 并发」泛化表述，需更新（含"不需要每类型业务唯一键"）。
-3. **roadmap.md activelist 小节两处滞后**：两层审计「已确认」（收敛后应为审计归 zhuzhao、activelist 只记技术日志）；事件总线对接旧表述（应为 zhuzhao 业务操作点显式发布）；「Phase 3 启动后」排期表述（应为 M-A 无链式依赖）。
-4. **zhuzhao 侧 ADR-003 工作区改动未提交**（路径引用 + 「SSOT 以 activelist 仓库为准」声明）。
+1. ~~方案 D 定稿~~ ✅ 已同步：zhuzhao ADR-003 镜像 §116、roadmap、phase3-13 M-A 行均已更新（数据行不带 `schema_version`、方案 D 采纳）。
+2. ~~导入幂等 = 全量替换~~ ✅ 已同步：zhuzhao 侧 ADR-003 / roadmap / phase3-13 M-A 行均已改为「全量替换、保留源 id、不需要每类型业务唯一键」。
+3. ~~roadmap.md activelist 小节滞后~~ ✅ 已更新：审计归 zhuzhao、事件为 zhuzhao 业务操作点显式发布、M-A 无链式依赖均已修正。
+4. ~~zhuzhao 侧 ADR-003 工作区改动未提交~~ ✅ 已提交。
 
 ## 变更记录
 
