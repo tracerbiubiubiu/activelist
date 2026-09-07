@@ -28,9 +28,10 @@
 | A2 | CRUD | 插入/按 id 查/更新/软删/恢复全通；软删后默认不可见、更新 409、重复软删幂等；恢复后可写 |
 | A3 | Schema 演进 | 加 optional 字段后旧数据零迁移可读可写；加 required 字段后新插入强制校验、旧数据更新返回 422（错误信息含迁移指引） |
 | A4 | 乐观锁 | 并发更新同一行 → 恰一成功，其余 409；version 不匹配更新 409 |
-| A5 | 导入导出 | 导出 JSON（含 id / status / created_at）→ 清空环境 → 导入 → 数据一致；**重导同一文件结果一致（幂等）**；序列正确（后续插入不冲突）；导入期间并发写按定稿行为（阻塞至提交 / 跨导入读改写 409） |
+| A5 | 导入导出 | 导出 JSON（含 id / status / created_at）→ 清空环境 → 导入 → 数据一致；**重导同一文件结果一致（幂等）**；序列正确（后续插入不冲突）；导入期间并发写：短阻塞（会话 lock_timeout ≈5s）后等至提交或快速 409，并发导入按类型互斥（表锁 / advisory lock） |
 | A6 | 日志 | 请求级 + 错误级日志含 `X-Request-ID` 与 `X-Operator`；**脱敏暂不做**（已拍板，预留 schema `sensitive` 标记 + 统一日志出口钩子，见 ADR-003 审计节）；不记业务语义内容 |
-| A7 | 部署 | docker-compose 双 network（`activelist_internal` + `zhuzhao_to_activelist`）、**apiserver 双副本**；`/healthz` `/readyz`（readyz 检 PG）；优雅停止（SIGTERM 排空，重启单副本服务不中断）；**migrations 全库只执行一次**（init 容器 / CI 步骤，工具自带 advisory lock，多副本并发启动不重复执行）；备份任务按日跑通 |
+| A7 | 部署 | docker-compose 双 network（`activelist_internal` + `zhuzhao_to_activelist`）、**apiserver 双副本**；`/healthz` `/readyz`（readyz 检 PG）；优雅停止（SIGTERM 排空，重启单副本服务不中断）；**migrations 全库只执行一次**（init 容器 / CI 步骤，工具 = **golang-migrate**，postgres 驱动自带会话级 advisory lock，多副本并发启动不重复执行）；备份任务按日跑通 |
+| A8 | AK/SK 验签 | 缺/错签名 → 401；密钥环空（或含空 SK）拒绝启动（fail-closed）；`X-Operator` 在签名覆盖内（不可伪造） |
 | 门禁 | 工程 | `make lint` / `make test` 全绿；CRUD + 演进 + 导入导出有针对真实 PG 的集成测试 |
 
 ## 3. 里程碑拆分
@@ -44,7 +45,7 @@
 | M-A3 CRUD | 插入 / 列表（keyset 分页 + created_at 倒序）/ 单查 / 更新（读-合并-全量校验-乐观锁）/ 软删 / 恢复 | M-A2 | A2 / A4 |
 | M-A4 Schema 演进 | 演进端点 + 方案 D 语义（兼容 / 破坏性懒执行）+ schema 变更历史查询 | M-A2 | A3 |
 | M-A5 导入导出 | 导出（含 id/status/created_at）/ 全量替换导入（同事务分批写入 + setval）/ 批次审计素材（响应返回批次汇总） | M-A3 | A5 |
-| M-A6 日志 + 部署收尾 | slog 接入（utils `logger`）、访问日志（**统一中间件出口**：method/path/operator/trace_id/参数 4KB 截断/结果；脱敏暂不做）、**AK/SK 验签中间件**（utils `aksk`，验 zhuzhao 调用签名——2026-09-03 基线修订，~0.2 天）、compose 双 network（**多副本**）、备份策略（pg_dump 每日 + WAL 归档）、README 快速开始 | 全部 | A6 / A7 |
+| M-A6 日志 + 部署收尾 | slog 接入（utils `logger`）、访问日志（**统一中间件出口**：method/path/operator/trace_id/参数 4KB 截断/结果；脱敏暂不做）、**AK/SK 验签中间件**（utils `aksk`，验 zhuzhao 调用签名；验收 A8；**依赖 utils 发 v0.2.0（含 aksk），否则临时 go.mod replace**）、compose 双 network（**多副本**）、备份策略（pg_dump 每日 + WAL 归档）、README 快速开始 | 全部 | A6 / A7 / A8 |
 
 ## 4. API 清单（收敛后修订版，**取代 activelist.md §6.9 旧清单**）
 
@@ -66,7 +67,7 @@
 | 方法 | 路径 | 用途 |
 |------|------|------|
 | POST | `/api/v1/data/:typeName` | 插入数据 |
-| GET | `/api/v1/data/:typeName` | 列表：仅 keyset 分页（`?after_id=` / `?page_size=`）+ created_at 倒序 |
+| GET | `/api/v1/data/:typeName` | 列表：仅 keyset 分页（`?after_created_at=<RFC3339>&after_id=<int>` **成对出现，缺一 400** / `?page_size=`）+ created_at DESC, id DESC 倒序 |
 | GET | `/api/v1/data/:typeName/:id` | 查单条 |
 | PUT | `/api/v1/data/:typeName/:id` | 更新（body 携带 version，乐观锁） |
 | DELETE | `/api/v1/data/:typeName/:id` | 软删除 |
@@ -98,7 +99,7 @@ activelist/
 ├── config/config.yaml
 ├── deploy/
 │   └── docker-compose.yaml    # PG + apiserver；双 network，apiserver 仅对 zhuzhao network 暴露 8080
-└── Makefile                   # lint / test / test-integration / build
+└── Makefile                   # lint（vet+gofmt）/ test / test-integration（真 PG）/ build
 ```
 
 命名注意：`internal/` 下包名避开与 zhuzhao-utils 同短名引起的 import 混淆；数据访问层统一 `repository`（基线层名，taskrunner 同款）。

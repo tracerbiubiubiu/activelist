@@ -69,20 +69,20 @@
 ### 覆盖上文条款对照
 | 上文条款 | 收敛后 |
 |---|---|
-| 「审计日志分工（两层）」：网关层跳过 body + **activelist 业务层自脱敏 accesslog**（§52–56） | **修订**：审计/业务日志归 **zhuzhao**；activelist 只记**技术/运行日志**（请求级 + 错误级，不记业务语义、可脱敏）；`X-Request-ID` 贯穿两层关联排查 |
+| 「审计日志分工（两层）」：网关层跳过 body + **activelist 业务层自脱敏 accesslog**（§52–56） | **修订**：审计/业务日志归 **zhuzhao**；activelist 只记**技术/运行日志**（请求级 + 错误级，不记业务语义；脱敏暂不做——钩子预留）；`X-Request-ID` 贯穿两层关联排查 |
 | 待办 **G4 两层审计** | **修订并关闭**：zhuzhao 侧审计记录（✅ 落点机制已拍板 2026-09-03，见「审计落点机制」专节：client 封装层 + `activelist_audit_log`） |
 | 待办 **G1/G2**（Change Stream→Outbox/逻辑复制改造；activelist 变更事件桥接汇入 L1） | **简化**：activelist 侧不再有事件捕获职责；事件 = zhuzhao 调 activelist 成功后**业务操作点显式发布**（G2 含义从「activelist 变更事件汇入」改为「zhuzhao 调用后发布事件」） |
 | 建议阶段「Phase 3 启动后（L1+Asynq 就绪后）」 | 不变（L1/Asynq 就绪后，事件侧已由 zhuzhao 承担） |
 | 转 PG 收益「写主数据 + 写历史快照 + 落事件 可用 PG 事务原子」 | **减弱**：历史快照/事件外置后，activelist 内部只剩主数据写，事务需求大幅简化 |
 
 ### 日志与共享 utils（2026-09-03 新增拍板）
-- **共享 utils 项目**：`zhuzhao/internal/pkg/` 通用代码抽取为**独立共享项目**（候选名 ⚠️ 待定：`zhuzhao-common` / `zhuzhao-utils` / `tracerbiubiubiu/libs` 等），**zhuzhao 与 activelist 均引用**。
+- **共享 utils 项目**：`zhuzhao/internal/pkg/` 通用代码抽取为**独立共享项目**（✅ 2026-09-03 定名 `zhuzhao-utils` 并发布 v0.1.0），**zhuzhao 与 activelist 均引用**。
 - **抽取范围（2026-09-03 已核实依赖面）**：
   - 零内部依赖可直接抽：`crypto` / `errcode` / `jsonutil` / `resource` / `validate`；`response` 依赖 `errcode`，随包抽取。
   - 需 **config 解耦**后抽：`jwt` / `logger` / `postgres` / `redis`（当前依赖 `zhuzhao/internal/config` 的 LogConfig/DBConfig 等，抽取时结构体参数化或随包自带）。
-  - `resource` 是否绑定 zhuzhao 权限领域，抽取前复核 ⚠️。
+  - `resource` ✅ 已复核（2026-09-03）：绑定 zhuzhao 权限领域，**留 zhuzhao 不抽**（design-decisions §25.3）。
 - **关键约束**：新项目必须**移出 `internal/` 目录**（否则仍受 Go internal 约束，无法被独立 module 引用）；zhuzhao 全仓库 import 改新 module path；**一次性完成避免双份维护**；完成后跑全量门禁（`make lint` / `make test-unit` / `make test-integration` / `make acceptance`）。
-- **触发时机** 🚦：activelist 启动前（M-A 前置，activelist 复用依赖它）；zhuzhao 侧重构影响面大（handler/service/repository 大量 import 变更），排期纳入。
+- **触发时机** ✅ 已完成（2026-09-03，zhuzhao-utils v0.1.0 发布并 pin；M-A 前置解除）。
 - **业界对标结论（为何自研薄层）**：收敛后 activelist 为薄层动态数据模型平台；同类开源（NocoBase / Teable / Twenty / NocoDB / Baserow 等）均连带事件/审计/UI/组织集成，复用=引入整套独立系统（多为 Node/TS 栈、独立运维）；自研薄层 + 共享 utils 复用 zhuzhao 积木（PG/JSONB/Asynq/errcode）更符合技术栈统一与运维最小化。
 
 ### 需求澄清 · 最终画像与存储引擎（2026-09-03 追加）
@@ -171,7 +171,7 @@ col_<type>(
 - **G1（activelist 侧，转 PG）**：Mongo → PG 迁移设计（动态集合→分区表/每类型表；Change Stream→Outbox/逻辑复制；历史快照落 PG 表）。**含日志 writer 迁移**：§19.7.1 的 `mongo_writer.go` / `NewMongoWriteSyncer` 需改为 PG writer，否则转 PG 后日志仍依赖 Mongo。
 - **G2（集成缺口）**：~~activelist 变更事件 → zhuzhao 统一事件目录（L1 事件源）的桥接设计~~（已被收敛修订取代：activelist 无事件职责；事件 = zhuzhao **业务操作点显式发布**——client 封装层对 activelist 写操作成功后发布，非「网关事件摄入端点」路径）。
 - **G3（zhuzhao 工单侧）**：多源 ingress 适配器设计（手动 + activelist + 其他模块）。
-- **G4（审计层，已确认）**：两层审计落地——zhuzhao 网关层（E13 跳过 body）+ activelist 业务层（自脱敏 accesslog）。
+- **G4（审计层）**：~~两层审计落地——zhuzhao 网关层 + activelist 业务层自脱敏 accesslog~~（已被收敛修订取代：审计归 zhuzhao client 封装层 + `activelist_audit_log`，✅ 见「审计落点机制」专节；脱敏暂不做）。
 
 ## 建议阶段
 

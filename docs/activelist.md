@@ -5,13 +5,14 @@
 > **⚠️ 2026-09-03 职责收敛声明（SSOT = 本文件头部定稿 + 本仓库 `docs/ADR-003-integration-contract.md`；zhuzhao 侧 ADR-003 / design-decisions 为镜像，2026-09-03 起以 activelist 仓库为准）**：本方案为原始完整设计（事件驱动 + 全生命周期审计 + 三进程高可用）。经职责收敛拍板，**activelist 收窄为「动态数据模型平台」**——只负责：类型注册 / Schema 演进 / 动态字段校验 / 数据 CRUD / 存储（乐观锁、软删除保留）。**事件驱动与审计（历史快照）移交给 zhuzhao**（事件 = zhuzhao Asynq；审计 = zhuzhao 侧记录），activelist 不感知事件、不写历史快照。**独立部署保留**（独立服务 + 独立库 + 独立数据库，zhuzhao 作对外网关调用）。进程由 3 个减为 1 个（仅 apiserver）。
 >
 > 本文后续正文仍为完整历史方案，章节有效性如下：
-> - **继续有效（数据模型层）**：§4 技术栈、§5.1/§5.2（数据/元数据模型）、§6.1–6.5（Registry/Repository/Validation/Schema 演进/软删除状态机）、§10（并发控制）、§15（安全——其中 §15.1 认证口径已被 AK/SK 基线修订覆盖，见下）。
+> - **继续有效（数据模型层）**：§5.1/§5.2（数据/元数据模型）、§6.1–6.5（Registry/Repository/Validation/Schema 演进/软删除状态机）、§10（并发控制）、§15（安全——其中 §15.1 认证口径已被 AK/SK 基线修订覆盖，见下）。
 > - **已被取代（仅作历史参考）**：§6.7（查询安全——按最终画像收窄为 id 分页 + 时间倒序）、§6.9（API 清单——以 [`implementation-plan.md`](./implementation-plan.md) §4 为准）；§6.8（错误码）语义仍沿用。**实现细节与本文件冲突时，一律以 implementation-plan.md 为准。**
+- **§15.4 仅「缺失兜底 system」规则有效**：其溯源链路（Change Stream/历史集合）与「不感知字段敏感性」表述已被收敛/AK-SK 修订取代（`sensitive: true` 钩子预留，见 implementation-plan §7）。
 - **§4（技术栈）已废**：MongoDB/Redis/Asynq/asynqmon 行全部失效（收敛后 = gin + PG + zhuzhao-utils）；现行技术栈以 implementation-plan.md §5/§6 为准。
 - **§6.4 中 schemaVersion 演进流程已被方案 D 取代**（单一当前版本，见头部定稿补充）；仅并发演进 409 语义仍被引用（implementation-plan §7）。
 > - **移交 zhuzhao（不再由 activelist 实现）**：§5.3 历史集合（审计）、§7 事件驱动架构（Change Stream + Asynq worker）、§8 事件侧高可用（watcher HA / Redis fallback）、§12 可靠性矩阵（事件部分）、§13 流程四/五/六。
 > - **需复核调整**：§6.6（数据迁移）、§10.4（跨集合事务——事件/历史剥离后内部事务需求简化）、§14（注意事项）、§18/§19（部署/集成按 ADR-003 修订）。
-> - **日志**：activelist 只记技术/运行日志（请求级 + 错误级，含 `X-Request-ID`，不记业务语义、可脱敏），业务/审计日志由 zhuzhao 记；日志代码复用 = 从 zhuzhao `internal/pkg` 抽取的**共享 utils 项目**（见 ADR-003 修订）。
+> - **日志**：activelist 只记技术/运行日志（请求级 + 错误级，含 `X-Request-ID`，不记业务语义；脱敏暂不做，钩子预留），业务/审计日志由 zhuzhao 记；日志代码复用 = 从 zhuzhao `internal/pkg` 抽取的**共享 utils 项目**（见 ADR-003 修订）。
 > - **业界对标结论（2026-09-03）**：activelist 收敛后 = 薄层动态数据模型平台；同类开源（NocoBase / Teable / Twenty 等）均连带事件/审计/UI/组织集成，复用需引入整套独立系统；自研薄层 + 复用共享 utils 更划算（详见 ADR-003 修订节）。
 >
 > ### 2026-09-03 需求澄清 · 最终画像（SSOT = ADR-003 修订节）
