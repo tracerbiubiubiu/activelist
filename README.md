@@ -36,6 +36,6 @@
 ## 状态
 
 - 文档就绪：设计收敛定稿 + **实现计划就绪**（[implementation-plan.md](./docs/implementation-plan.md)，M-A 验收标准见其 §2）
-- 代码未开始（首个里程碑 M-A1：项目骨架）
-- 启动前置 ✅ **已就绪（2026-09-03）**：zhuzhao-utils v0.1.0 已发布并 pin（activelist 硬依赖 `logger` + `postgres`；见 ADR-003 D1 验证记录）——**M-A1 可立即开工**
+- 代码进度（2026-09-08）：**M-A1 骨架 / M-A2 类型注册+建表 已完成**（feat/ma1-skeleton，集成测试全过），**M-A3 CRUD 待启动**
+- 启动前置 ✅ **已就绪**：zhuzhao-utils **v0.2.0 直引无 replace**（activelist 硬依赖 `logger` + `postgres`；v0.1.0 pin 已随 M-A1 升级，见 ADR-003 D1 验证记录）
 - 排期归属：zhuzhao Phase 3 主线 **M-A（activelist 独立实现）**，与其他里程碑无链式依赖（2026-09-02 design-decisions §23.2，详见 ADR-003「排期与集成拆分同步」节）
