@@ -3,7 +3,7 @@
 // 依下方「注入集合」重建 wireinject 文件并运行 wire。taskrunner 同款）。
 //
 // 注入集合（InitializeApp）：
-//	provideLogger / providePool（含启动迁移）/ provideReadyz / provideEngine → NewApp
+//	provideLogger / providePool（含启动迁移）/ provideTypeService / provideReadyz / provideEngine → NewApp
 
 //go:build !wireinject
 // +build !wireinject
@@ -12,6 +12,7 @@ package app
 
 import (
 	"github.com/tracerbiubiubiu/activelist/internal/config"
+	"github.com/tracerbiubiubiu/activelist/internal/service"
 )
 
 // InitializeApp 依赖装配入口。
@@ -21,6 +22,7 @@ func InitializeApp(cfg *config.Config) (*App, func(), error) {
 	if err != nil {
 		return nil, nil, err
 	}
-	engine := provideEngine(provideReadyz(pool))
+	types := service.NewTypeService(pool)
+	engine := provideEngine(types, provideReadyz(pool))
 	return NewApp(cfg, logger, engine, pool), func() { cleanupPool() }, nil
 }

@@ -15,6 +15,7 @@ import (
 	"github.com/tracerbiubiubiu/activelist/internal/config"
 	"github.com/tracerbiubiubiu/activelist/internal/handler"
 	"github.com/tracerbiubiubiu/activelist/internal/repository"
+	"github.com/tracerbiubiubiu/activelist/internal/service"
 )
 
 // provideLogger 应用日志（utils logger：slog + lumberjack 轮转，JSON Lines 稳定字段）。
@@ -54,6 +55,6 @@ func provideReadyz(pool *pgxpool.Pool) func() error {
 }
 
 // provideEngine HTTP 路由引擎。
-func provideEngine(ready func() error) *gin.Engine {
-	return handler.New(handler.Deps{Ready: ready})
+func provideEngine(types *service.TypeService, ready func() error) *gin.Engine {
+	return handler.New(handler.Deps{Types: types, Ready: ready})
 }

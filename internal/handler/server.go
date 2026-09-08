@@ -1,6 +1,6 @@
 // Package handler HTTP 层（薄：绑定/映射，业务在 service——结构基线）。
-// M-A1 仅健康探针；/api/v1 业务组随 M-A2（admin/types）起挂载，
-// AK/SK 验签与访问日志中间件随 M-A6。
+// M-A1 健康探针 + M-A2 类型管理端点；AK/SK 验签与访问日志中间件随 M-A6
+// （当前 /api/v1 仅限内网开发态调用，不上线）。
 package handler
 
 import (
@@ -8,11 +8,18 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"github.com/tracerbiubiubiu/activelist/internal/apperr"
+	"github.com/tracerbiubiubiu/activelist/internal/meta"
 	"github.com/tracerbiubiubiu/activelist/internal/middleware"
+	"github.com/tracerbiubiubiu/activelist/internal/service"
 )
+
+// operatorOf X-Operator 断言取值；中间件随 M-A6 落地，当前恒 system。
+const operatorFallback = "system"
 
 // Deps handler 依赖。Ready 为 readyz 探针（检 PG 可查询）；nil = 恒就绪（测试用）。
 type Deps struct {
+	Types *service.TypeService
 	Ready func() error
 }
 
@@ -22,7 +29,7 @@ func New(d Deps) *gin.Engine {
 	r := gin.New()
 	r.Use(gin.Recovery(), middleware.RequestID())
 
-	// 探针裸露（不进验签组）——容器编排存活/就绪检查用。
+	// 探针裸露（不进业务组）——容器编排存活/就绪检查用。
 	r.GET("/healthz", func(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"status": "ok"}) })
 	r.GET("/readyz", func(c *gin.Context) {
 		if d.Ready != nil {
@@ -33,5 +40,73 @@ func New(d Deps) *gin.Engine {
 		}
 		c.JSON(http.StatusOK, gin.H{"status": "ready"})
 	})
+
+	// 类型管理（M-A2；A1）。鉴权随 M-A6 AK/SK 中间件。
+	v1 := r.Group("/api/v1")
+	{
+		types := v1.Group("/admin/types")
+		{
+			types.POST("", d.registerType)
+			types.GET("", d.listTypes)
+			types.GET("/:typeName", d.getType)
+			types.POST("/:typeName/deprecate", d.deprecateType)
+		}
+	}
 	return r
+}
+
+// registerType 注册类型（201；重复 409；非法 422——A1）。
+func (d *Deps) registerType(c *gin.Context) {
+	var in service.RegisterInput
+	if err := c.ShouldBindJSON(&in); err != nil {
+		BadRequest(c, "请求体解析失败（type_name 与 fields 必填）")
+		return
+	}
+	def, err := d.Types.Register(c.Request.Context(), in, operatorFallback)
+	if err != nil {
+		Fail(c, asAppErr(err))
+		return
+	}
+	Created(c, def)
+}
+
+// listTypes 类型列表。
+func (d *Deps) listTypes(c *gin.Context) {
+	list, err := d.Types.List(c.Request.Context())
+	if err != nil {
+		Fail(c, asAppErr(err))
+		return
+	}
+	if list == nil {
+		list = []meta.Definition{}
+	}
+	OK(c, gin.H{"list": list, "total": len(list)})
+}
+
+// getType 查类型当前 schema 定义（不存在 404）。
+func (d *Deps) getType(c *gin.Context) {
+	def, err := d.Types.Get(c.Request.Context(), c.Param("typeName"))
+	if err != nil {
+		Fail(c, asAppErr(err))
+		return
+	}
+	OK(c, def)
+}
+
+// deprecateType 废弃类型（幂等；不存在 404）。
+func (d *Deps) deprecateType(c *gin.Context) {
+	def, err := d.Types.Deprecate(c.Request.Context(), c.Param("typeName"), operatorFallback)
+	if err != nil {
+		Fail(c, asAppErr(err))
+		return
+	}
+	OK(c, def)
+}
+
+// asAppErr 非 *apperr.Error 的意外错误兜底为 500（防内部细节泄漏）。
+func asAppErr(err error) *apperr.Error {
+	if e, ok := err.(*apperr.Error); ok {
+		return e
+	}
+	return apperr.New(500, apperr.CodeInternal, "内部错误")
 }
