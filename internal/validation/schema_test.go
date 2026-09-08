@@ -24,7 +24,11 @@ func TestValidateTypeName(t *testing.T) {
 		{"数字开头拒绝", "2fast", true, apperr.CodeValidation},
 		{"连字符拒绝", "bad-name", true, apperr.CodeValidation},
 		{"空拒绝", "", true, apperr.CodeValidation},
-		{"超 63 拒绝", strings.Repeat("a", 64), true, apperr.CodeValidation},
+		{"超 51 拒绝（索引名 63 上限）", strings.Repeat("a", 52), true, apperr.CodeValidation},
+		{"51 字符合法边界", strings.Repeat("a", 51), false, ""},
+		{"系统表 data_types 拒绝", "data_types", true, apperr.CodeReservedField},
+		{"系统表 schema_migrations 拒绝", "schema_migrations", true, apperr.CodeReservedField},
+		{"pg_ 前缀拒绝", "pg_shadow", true, apperr.CodeValidation},
 		{"保留字段名拒绝", "data", true, apperr.CodeReservedField},
 		{"保留 status 拒绝", "status", true, apperr.CodeReservedField},
 	}

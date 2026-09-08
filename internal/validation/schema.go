@@ -5,6 +5,7 @@ package validation
 
 import (
 	"regexp"
+	"strings"
 
 	"github.com/tracerbiubiubiu/activelist/internal/apperr"
 	"github.com/tracerbiubiubiu/activelist/internal/meta"
@@ -14,9 +15,18 @@ import (
 // typeName 同时是动态表名（≤63 = PG 标识符上限），白名单本身即注入防线，
 // DDL 中仍统一双引号引用。
 var (
-	typeNameRe  = regexp.MustCompile(`^[a-z][a-z0-9_]{0,62}$`)
+	// typeName ≤51：动态索引名 idx_<name>_created 须 ≤63（4+51+8），
+	// 超长被 PG 截断后长前缀重名类型会静默共享索引名（IF NOT EXISTS 跳过建索引）。
+	typeNameRe  = regexp.MustCompile(`^[a-z][a-z0-9_]{0,50}$`)
 	fieldNameRe = regexp.MustCompile(`^[a-z][a-z0-9_]{0,62}$`)
 )
+
+// reservedTables 系统表名禁用（typeName 即动态表名）：元数据两表 + 迁移记账表
+// 若被注册，CREATE TABLE IF NOT EXISTS 对已存在表静默跳过，后续数据读写
+// 将直打元数据表——完整性防线必须在白名单层拦截。
+var reservedTables = map[string]bool{
+	"data_types": true, "data_type_schema_history": true, "schema_migrations": true,
+}
 
 // reservedFields 数据行保留列族（§7）——用户 schema 字段禁用同名。
 var reservedFields = map[string]bool{
@@ -37,11 +47,19 @@ func invalid(msg string) *apperr.Error {
 // ValidateTypeName 类型名白名单。
 func ValidateTypeName(name string) *apperr.Error {
 	if !typeNameRe.MatchString(name) {
-		return invalid("类型名非法（小写字母开头，仅小写字母/数字/下划线，≤63 字符）").
+		return invalid("类型名非法（小写字母开头，仅小写字母/数字/下划线，≤51 字符）").
 			WithDetail("field", "type_name").WithDetail("value", name)
 	}
 	if reservedFields[name] {
 		return apperr.New(422, apperr.CodeReservedField, "类型名与保留字段冲突: "+name).
+			WithDetail("field", "type_name").WithDetail("value", name)
+	}
+	if reservedTables[name] {
+		return apperr.New(422, apperr.CodeReservedField, "类型名与系统表冲突: "+name).
+			WithDetail("field", "type_name").WithDetail("value", name)
+	}
+	if strings.HasPrefix(name, "pg_") {
+		return invalid("类型名不允许 pg_ 前缀（PG 系统命名空间）").
 			WithDetail("field", "type_name").WithDetail("value", name)
 	}
 	return nil
@@ -55,7 +73,7 @@ func ValidateFields(fields []meta.Field) *apperr.Error {
 	seen := map[string]bool{}
 	for i, f := range fields {
 		if !fieldNameRe.MatchString(f.Name) {
-			return invalid("字段名非法（小写字母开头，仅小写字母/数字/下划线，≤63 字符）").
+			return invalid("字段名非法（小写字母开头，仅小写字母/数字/下划线，≤51 字符）").
 				WithDetail("field", "fields").WithDetail("index", i).WithDetail("value", f.Name)
 		}
 		if reservedFields[f.Name] {
