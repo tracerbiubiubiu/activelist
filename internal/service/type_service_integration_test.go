@@ -138,7 +138,7 @@ func TestA1_RegisterNegative(t *testing.T) {
 }
 
 // 废弃流：active→deprecated 落历史；重复废弃幂等；不存在 404。
-// （"deprecated 拒绝写入"的数据路径接线随 M-A3，此处验证状态迁移与历史。）
+// （"deprecated 拒绝写入"的数据路径接线已于 M-A3 落地：TestA1_DeprecatedTypeRejectsWrite。）
 func TestA1_DeprecateFlow(t *testing.T) {
 	pool, svc := setupPG(t)
 	ctx := context.Background()

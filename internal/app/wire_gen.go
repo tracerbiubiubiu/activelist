@@ -3,7 +3,8 @@
 // 依下方「注入集合」重建 wireinject 文件并运行 wire。taskrunner 同款）。
 //
 // 注入集合（InitializeApp）：
-//	provideLogger / providePool（含启动迁移）/ provideTypeService / provideReadyz / provideEngine → NewApp
+//	provideLogger / providePool（含启动迁移）/ provideTypeService / provideDataService /
+//	provideReadyz / provideEngine → NewApp
 
 //go:build !wireinject
 // +build !wireinject
@@ -23,6 +24,7 @@ func InitializeApp(cfg *config.Config) (*App, func(), error) {
 		return nil, nil, err
 	}
 	types := service.NewTypeService(pool)
-	engine := provideEngine(types, provideReadyz(pool))
+	data := service.NewDataService(pool, cfg.Business.PageSizeDefault, cfg.Business.PageSizeMax)
+	engine := provideEngine(types, data, provideReadyz(pool))
 	return NewApp(cfg, logger, engine), func() { cleanupPool() }, nil
 }

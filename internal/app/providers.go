@@ -55,6 +55,6 @@ func provideReadyz(pool *pgxpool.Pool) func() error {
 }
 
 // provideEngine HTTP 路由引擎。
-func provideEngine(types *service.TypeService, ready func() error) *gin.Engine {
-	return handler.New(handler.Deps{Types: types, Ready: ready})
+func provideEngine(types *service.TypeService, data *service.DataService, ready func() error) *gin.Engine {
+	return handler.New(handler.Deps{Types: types, Data: data, Ready: ready})
 }

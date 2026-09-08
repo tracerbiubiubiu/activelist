@@ -21,6 +21,7 @@ const operatorFallback = "system"
 // Deps handler 依赖。Ready 为 readyz 探针（检 PG 可查询）；nil = 恒就绪（测试用）。
 type Deps struct {
 	Types *service.TypeService
+	Data  *service.DataService
 	Ready func() error
 }
 
@@ -51,6 +52,17 @@ func New(d Deps) *gin.Engine {
 			types.GET("", d.listTypes)
 			types.GET("/:typeName", d.getType)
 			types.POST("/:typeName/deprecate", d.deprecateType)
+		}
+
+		// 数据 CRUD（M-A3；A2/A4）。软删行单查可见、列表默认排除（§7）。
+		data := v1.Group("/data")
+		{
+			data.POST("/:typeName", d.insertData)
+			data.GET("/:typeName", d.listData)
+			data.GET("/:typeName/:id", d.getData)
+			data.PUT("/:typeName/:id", d.updateData)
+			data.DELETE("/:typeName/:id", d.deleteData)
+			data.POST("/:typeName/:id/restore", d.restoreData)
 		}
 	}
 	return r
