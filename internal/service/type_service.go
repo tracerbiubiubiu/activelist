@@ -76,7 +76,9 @@ func (s *TypeService) Deprecate(ctx context.Context, typeName, operator string) 
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 
-	cur, err := meta.GetByName(ctx, s.pool, typeName)
+	// 旧态读走 tx（与写同快照）：M-A4 schema 演进上线后，pool 读会拿到演进前
+	// 的 fields 进历史；pgx.Tx 满足 meta.pgxPool 接口，无需专用 GetByNameTx。
+	cur, err := meta.GetByName(ctx, tx, typeName)
 	if err != nil {
 		return nil, err
 	}

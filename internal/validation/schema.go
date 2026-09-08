@@ -73,7 +73,7 @@ func ValidateFields(fields []meta.Field) *apperr.Error {
 	seen := map[string]bool{}
 	for i, f := range fields {
 		if !fieldNameRe.MatchString(f.Name) {
-			return invalid("字段名非法（小写字母开头，仅小写字母/数字/下划线，≤51 字符）").
+			return invalid("字段名非法（小写字母开头，仅小写字母/数字/下划线，≤63 字符）").
 				WithDetail("field", "fields").WithDetail("index", i).WithDetail("value", f.Name)
 		}
 		if reservedFields[f.Name] {

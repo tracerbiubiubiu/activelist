@@ -56,7 +56,8 @@ func schemaDefJSON(fields []Field) ([]byte, error) {
 }
 
 // InsertType 注册类型（事务内）。typeName 唯一冲突 → 409 TYPE_ALREADY_EXISTS。
-// created_by/updated_by 为 X-Operator 断言（M-A6 起真实值，当前 system）。
+// created_by/updated_by 为 X-Operator 断言（M-A6 起真实值，当前 system）；
+// 空串经 COALESCE 回退列默认 'system'——显式 NULL 不触发列 DEFAULT，会 23502。
 func InsertType(ctx context.Context, tx pgx.Tx, typeName string, fields []Field, operator string) error {
 	def, err := schemaDefJSON(fields)
 	if err != nil {
@@ -64,7 +65,7 @@ func InsertType(ctx context.Context, tx pgx.Tx, typeName string, fields []Field,
 	}
 	_, err = tx.Exec(ctx, `
 		INSERT INTO data_types (type_name, schema_def, status, created_by, updated_by)
-		VALUES ($1, $2, $3, NULLIF($4, ''), NULLIF($4, ''))`,
+		VALUES ($1, $2, $3, COALESCE(NULLIF($4, ''), 'system'), COALESCE(NULLIF($4, ''), 'system'))`,
 		typeName, def, StatusActive, operator)
 	if err != nil {
 		var pgErr *pgconn.PgError
@@ -85,7 +86,7 @@ func InsertHistory(ctx context.Context, tx pgx.Tx, typeName, op string, fields [
 	}
 	_, err = tx.Exec(ctx, `
 		INSERT INTO data_type_schema_history (type_name, op, schema_def, changed_by)
-		VALUES ($1, $2, $3, NULLIF($4, ''))`, typeName, op, def, operator)
+		VALUES ($1, $2, $3, COALESCE(NULLIF($4, ''), 'system'))`, typeName, op, def, operator)
 	if err != nil {
 		return apperr.New(500, apperr.CodeInternal, "写入变更历史失败")
 	}
@@ -142,7 +143,7 @@ func List(ctx context.Context, pool pgxPool) ([]Definition, error) {
 // 不存在由调用方先 GetByName 判定（本函数返回迁移是否发生）。
 func Deprecate(ctx context.Context, tx pgx.Tx, typeName, operator string) (bool, error) {
 	tag, err := tx.Exec(ctx, `
-		UPDATE data_types SET status = $2, updated_by = NULLIF($3, ''), updated_at = NOW()
+		UPDATE data_types SET status = $2, updated_by = COALESCE(NULLIF($3, ''), 'system'), updated_at = NOW()
 		WHERE type_name = $1 AND status = $4`,
 		typeName, StatusDeprecated, operator, StatusActive)
 	if err != nil {

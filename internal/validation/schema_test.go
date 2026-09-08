@@ -54,6 +54,8 @@ func TestValidateFields(t *testing.T) {
 		{Name: "scores", Type: "int_list", Sensitive: true},
 	}
 	require.Nil(t, ValidateFields(valid))
+	// 63 = PG 标识符上限（fieldNameRe 首字符 + {0,62}）。
+	require.Nil(t, ValidateFields([]meta.Field{{Name: strings.Repeat("a", 63), Type: "string"}}))
 
 	cases := []struct {
 		name   string
@@ -61,6 +63,7 @@ func TestValidateFields(t *testing.T) {
 		want   string
 	}{
 		{"空字段表拒绝", nil, apperr.CodeValidation},
+		{"字段名超 63 拒绝", []meta.Field{{Name: strings.Repeat("a", 64), Type: "string"}}, apperr.CodeValidation},
 		{"类型非法", []meta.Field{{Name: "x", Type: "boolean"}}, apperr.CodeValidation},
 		{"类型大小写敏感", []meta.Field{{Name: "x", Type: "String"}}, apperr.CodeValidation},
 		{"字段名大写拒绝", []meta.Field{{Name: "Name", Type: "string"}}, apperr.CodeValidation},
