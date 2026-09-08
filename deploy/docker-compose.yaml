@@ -1,0 +1,23 @@
+# M-A1 开发态：仅 PG（apiserver 本地 `make build` 后直跑；
+# 双 network + apiserver 多副本 + 备份随 M-A6 部署收尾，A7）。
+services:
+  postgres:
+    image: postgres:15-alpine # 与 zhuzhao 测试容器同版本；16 拉取受当前网络限制，升级随部署复盘
+    container_name: activelist-dev-postgres
+    environment:
+      POSTGRES_USER: activelist
+      POSTGRES_PASSWORD: activelist
+      POSTGRES_DB: activelist
+      TZ: Asia/Shanghai
+    ports:
+      - "15432:5432" # 宿主调试口（避开本机 5432）；本地跑服务配 ACTIVELIST_PG_PORT=15432
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U activelist -d activelist"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  pgdata:

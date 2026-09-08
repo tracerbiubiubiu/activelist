@@ -1,0 +1,24 @@
+# activelist 配置（implementation-plan §6；${VAR:-default} 环境变量展开，
+# 镜像/容器内零文件纯 env 亦可运行——见 internal/config Load）。
+server:
+  port: 8080
+  read_timeout: 30s
+  write_timeout: 300s        # 导入大文件需要长写超时（M-A5）
+
+postgres:
+  host: ${ACTIVELIST_PG_HOST:-127.0.0.1}
+  port: ${ACTIVELIST_PG_PORT:-5432}
+  user: ${ACTIVELIST_PG_USER:-activelist}
+  password: ${ACTIVELIST_PG_PASSWORD:-activelist}
+  dbname: ${ACTIVELIST_PG_DBNAME:-activelist}
+  max_open_conns: 10         # 多实例按 副本数 × max_open_conns < PG max_connections 估算
+
+log:
+  level: ${ACTIVELIST_LOG_LEVEL:-info}
+  dir: ${ACTIVELIST_LOG_DIR:-logs}
+
+# AK/SK 验签密钥环（基线 §9；预期唯一调用方 zhuzhao）。中间件随 M-A6 落地，
+# 本里程碑仅承载配置——M-A6 起密钥环空拒绝启动（fail-closed，对齐 taskrunner）。
+security:
+  callers:
+    zhuzhao: ${ACTIVELIST_CALLER_ZHUZHAO_SK:-}
