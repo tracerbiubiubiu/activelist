@@ -1,4 +1,4 @@
-.PHONY: lint test build
+.PHONY: lint test test-integration build
 
 lint:
 	go vet ./...
@@ -6,6 +6,10 @@ lint:
 
 test:
 	go test ./...
+
+# 集成测试（真 PG，testcontainers 自起容器；需本机 Docker）
+test-integration:
+	go test -tags integration ./...
 
 build:
 	go build -trimpath -o bin/apiserver ./cmd/apiserver
