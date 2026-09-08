@@ -165,6 +165,33 @@ func TestA1_DeprecateFlow(t *testing.T) {
 	require.Equal(t, 404, mustAE(t, err).HTTP)
 }
 
+// operator 空串兜底（COALESCE 回退列默认 'system'）：显式 NULL 不触发列 DEFAULT，
+// 会 23502——M-A6 中间件上线后 X-Operator 缺头即此路径，回归网必须兜住。
+func TestA1_EmptyOperatorFallback(t *testing.T) {
+	pool, svc := setupPG(t)
+	ctx := context.Background()
+
+	_, err := svc.Register(ctx, service.RegisterInput{
+		TypeName: "anon_kind", Fields: []meta.Field{{Name: "name", Type: "string"}}}, "")
+	require.NoError(t, err)
+
+	var createdBy, changedBy string
+	require.NoError(t, pool.QueryRow(ctx,
+		`SELECT created_by FROM data_types WHERE type_name='anon_kind'`).Scan(&createdBy))
+	require.Equal(t, "system", createdBy)
+	require.NoError(t, pool.QueryRow(ctx,
+		`SELECT changed_by FROM data_type_schema_history
+		 WHERE type_name='anon_kind' AND op='register'`).Scan(&changedBy))
+	require.Equal(t, "system", changedBy)
+
+	// 废弃同路径（UPDATE 的 COALESCE 分支）
+	_, err = svc.Deprecate(ctx, "anon_kind", "")
+	require.NoError(t, err)
+	require.NoError(t, pool.QueryRow(ctx,
+		`SELECT updated_by FROM data_types WHERE type_name='anon_kind'`).Scan(&createdBy))
+	require.Equal(t, "system", createdBy)
+}
+
 // HTTP 层 e2e：路由 + §6.8 信封（201/409/422/400 形状断言）。
 func TestA1_HTTPEnvelope(t *testing.T) {
 	_, svc := setupPG(t)

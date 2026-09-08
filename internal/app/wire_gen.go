@@ -24,5 +24,5 @@ func InitializeApp(cfg *config.Config) (*App, func(), error) {
 	}
 	types := service.NewTypeService(pool)
 	engine := provideEngine(types, provideReadyz(pool))
-	return NewApp(cfg, logger, engine, pool), func() { cleanupPool() }, nil
+	return NewApp(cfg, logger, engine), func() { cleanupPool() }, nil
 }

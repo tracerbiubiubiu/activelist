@@ -18,22 +18,16 @@ import (
 )
 
 // App 应用实例：HTTP（/healthz /readyz；/api/v1 随 M-A2 起挂载）。
+// pool 不入 App——生命周期归 caller 的 cleanup（InitializeApp 返回值）。
 type App struct {
 	cfg    *config.Config
 	logger *slog.Logger
 	engine *gin.Engine
-	pool   pgxPool
 	server *http.Server
 }
 
-// pgxPool 最小接口（*pgxpool.Pool 满足；解耦 app↔pgx 具体类型，便于测试替身）。
-type pgxPool interface {
-	Ping(ctx context.Context) error
-	Close()
-}
-
-func NewApp(cfg *config.Config, logger *slog.Logger, engine *gin.Engine, pool pgxPool) *App {
-	return &App{cfg: cfg, logger: logger, engine: engine, pool: pool}
+func NewApp(cfg *config.Config, logger *slog.Logger, engine *gin.Engine) *App {
+	return &App{cfg: cfg, logger: logger, engine: engine}
 }
 
 // Run 启动并阻塞至退出信号；优雅停止（SIGTERM 排空在途请求——compose 多副本

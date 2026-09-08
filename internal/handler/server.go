@@ -4,6 +4,7 @@
 package handler
 
 import (
+	"errors"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -104,8 +105,10 @@ func (d *Deps) deprecateType(c *gin.Context) {
 }
 
 // asAppErr 非 *apperr.Error 的意外错误兜底为 500（防内部细节泄漏）。
+// errors.As 容忍中间层包装（%w）——直接类型断言遇包装会误降级为无上下文 500。
 func asAppErr(err error) *apperr.Error {
-	if e, ok := err.(*apperr.Error); ok {
+	var e *apperr.Error
+	if errors.As(err, &e) {
 		return e
 	}
 	return apperr.New(500, apperr.CodeInternal, "内部错误")

@@ -136,7 +136,10 @@ func List(ctx context.Context, pool pgxPool) ([]Definition, error) {
 		}
 		out = append(out, *d)
 	}
-	return out, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, apperr.New(500, apperr.CodeInternal, "查询类型列表失败")
+	}
+	return out, nil
 }
 
 // Deprecate 废弃类型（事务内）：active → deprecated 才产生状态迁移；
