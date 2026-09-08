@@ -17,6 +17,12 @@ log:
   level: ${ACTIVELIST_LOG_LEVEL:-info}
   dir: ${ACTIVELIST_LOG_DIR:-logs}
 
+# 业务参数（§6；M-A3 分页 / M-A5 导入分批消费，当前仅承载）
+business:
+  page_size_default: 20
+  page_size_max: 100
+  import_batch_rows: 1000    # 全量替换导入同事务内的分批行数
+
 # AK/SK 验签密钥环（基线 §9；预期唯一调用方 zhuzhao）。中间件随 M-A6 落地，
 # 本里程碑仅承载配置——M-A6 起密钥环空拒绝启动（fail-closed，对齐 taskrunner）。
 security:

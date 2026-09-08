@@ -45,6 +45,14 @@ type Log struct {
 	Dir   string `mapstructure:"dir"`
 }
 
+// Business 业务参数（§6；M-A3 分页 / M-A5 导入分批消费，当前仅承载）。
+type Business struct {
+	PageSizeDefault int `mapstructure:"page_size_default"`
+	PageSizeMax     int `mapstructure:"page_size_max"`
+	// ImportBatchRows 全量替换导入同事务内的分批行数（百万行级控内存/WAL）。
+	ImportBatchRows int `mapstructure:"import_batch_rows"`
+}
+
 type Security struct {
 	// Callers 验签密钥环（AK→SK，当前唯一调用方 zhuzhao）。中间件随 M-A6 落地，
 	// 届时空密钥环拒绝启动（fail-closed，对齐 taskrunner C2）；本里程碑仅承载。
@@ -55,6 +63,7 @@ type Config struct {
 	Server   Server   `mapstructure:"server"`
 	Postgres Postgres `mapstructure:"postgres"`
 	Log      Log      `mapstructure:"log"`
+	Business Business `mapstructure:"business"`
 	Security Security `mapstructure:"security"`
 }
 
@@ -106,6 +115,9 @@ func Load(path string) (*Config, error) {
 	viperBindInt(v, "postgres.max_open_conns", "ACTIVELIST_PG_MAX_OPEN_CONNS", 10)
 	bind("log.level", "ACTIVELIST_LOG_LEVEL", "info")
 	bind("log.dir", "ACTIVELIST_LOG_DIR", "logs")
+	viperBindInt(v, "business.page_size_default", "ACTIVELIST_BUSINESS_PAGE_SIZE_DEFAULT", 20)
+	viperBindInt(v, "business.page_size_max", "ACTIVELIST_BUSINESS_PAGE_SIZE_MAX", 100)
+	viperBindInt(v, "business.import_batch_rows", "ACTIVELIST_BUSINESS_IMPORT_BATCH_ROWS", 1000)
 	v.BindEnv("security.callers.zhuzhao", "ACTIVELIST_CALLER_ZHUZHAO_SK")
 
 	var cfg Config
@@ -117,6 +129,10 @@ func Load(path string) (*Config, error) {
 	}
 	if cfg.Postgres.Host == "" || cfg.Postgres.DBName == "" {
 		return nil, fmt.Errorf("postgres.host/dbname 不能为空")
+	}
+	if cfg.Business.PageSizeDefault <= 0 || cfg.Business.PageSizeMax < cfg.Business.PageSizeDefault ||
+		cfg.Business.ImportBatchRows <= 0 {
+		return nil, fmt.Errorf("business 参数非法（须为正且 page_size_max ≥ page_size_default）")
 	}
 	if cfg.Security.Callers == nil {
 		cfg.Security.Callers = map[string]string{}
