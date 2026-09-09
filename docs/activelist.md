@@ -733,8 +733,8 @@ Query 接口不能完全透传用户 filter，需做安全处理：
 | POST | `/api/v1/data/:typeName` | 插入数据 |
 | GET | `/api/v1/data/:typeName` | 列表查询（分页，详见 6.7） |
 | GET | `/api/v1/data/:typeName/:id` | 查询单个文档 |
-| PUT | `/api/v1/data/:typeName/:id` | 更新文档 |
-| DELETE | `/api/v1/data/:typeName/:id` | 软删除文档 |
+| POST | `/api/v1/data/:typeName/:id/update` | 更新文档（2026-09-09 实现路由形态） |
+| POST | `/api/v1/data/:typeName/:id/delete` | 软删除文档（同上） |
 | GET | `/api/v1/data/:typeName/:id/history` | 查文档变更历史 |
 
 **响应格式**（统一 `{code, msg, data}` 包装，与 zhuzhao 网关格式一致）：

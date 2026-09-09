@@ -99,27 +99,27 @@ func AccessLog(logger *slog.Logger) gin.HandlerFunc {
 	}
 }
 
-// snapshotParams 请求参数快照：query + body 前 4KB（读后还原；读失败置空——
-// 后续绑定自然报 400，不在此处造第二份错误响应）。
+// snapshotParams 请求参数快照：query + body 前 4KB。body **只读前 4KB**（LimitReader
+// ——禁止 io.ReadAll 全量缓冲：导入 body 可达 1GiB，全量读入 = 每请求同量级内存
+// 驻留，且令 handler 层 MaxBytesReader 失去意义），读后以 MultiReader 拼回原
+// body——后续中间件（AKSK 全量验签）与 handler 仍见完整流。读失败置空——后续
+// 绑定自然报 400，不在此处造第二份错误响应。
 func snapshotParams(c *gin.Context) string {
-	var body []byte
-	if c.Request.Body != nil {
-		full, err := io.ReadAll(c.Request.Body)
-		if err == nil {
-			c.Request.Body = io.NopCloser(bytes.NewBuffer(full))
-			if len(full) > 4096 {
-				body = full[:4096]
-			} else {
-				body = full
-			}
-		} else {
-			c.Request.Body = io.NopCloser(bytes.NewBuffer(nil))
-		}
+	query := c.Request.URL.RawQuery
+	if c.Request.Body == nil {
+		return query
 	}
-	if body == nil {
-		return c.Request.URL.RawQuery
+	orig := c.Request.Body
+	head, err := io.ReadAll(io.LimitReader(orig, 4096))
+	if err != nil {
+		c.Request.Body = io.NopCloser(bytes.NewBuffer(nil))
+		return query
 	}
-	return c.Request.URL.RawQuery + " " + string(body)
+	c.Request.Body = io.NopCloser(io.MultiReader(bytes.NewReader(head), orig))
+	if len(head) == 0 {
+		return query
+	}
+	return query + " " + string(head)
 }
 
 func randomHex(n int) string {

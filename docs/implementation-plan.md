@@ -49,7 +49,7 @@
 
 ## 4. API 清单（收敛后修订版，**取代 activelist.md §6.9 旧清单**）
 
-> 旧清单中 `/history` 数据端点移除（审计归 zhuzhao）；列表查询砍掉 filter/sort；新增导入导出与恢复；**写接口（POST/PUT/DELETE/restore）统一返回变更后完整文档**（id、version、data、updated_at——审计契约素材，见 ADR-003 收敛修订）。
+> 旧清单中 `/history` 数据端点移除（审计归 zhuzhao）；列表查询砍掉 filter/sort；新增导入导出与恢复；**写接口（插入/更新/删除/恢复，统一 POST 子路径——2026-09-09 实现拍板：`/:id/update` / `/:id/delete` / `/:id/restore`）统一返回变更后完整文档**（id、version、data、updated_at——审计契约素材，见 ADR-003 收敛修订）。
 
 **类型管理**（zhuzhao 侧 Restrict 映射 `activelist:admin`）：
 
@@ -69,8 +69,8 @@
 | POST | `/api/v1/data/:typeName` | 插入数据 |
 | GET | `/api/v1/data/:typeName` | 列表：仅 keyset 分页（`?after_created_at=<RFC3339>&after_id=<int>` **成对出现，缺一 400** / `?page_size=`）+ created_at DESC, id DESC 倒序 |
 | GET | `/api/v1/data/:typeName/:id` | 查单条 |
-| PUT | `/api/v1/data/:typeName/:id` | 更新（body 携带 version，乐观锁） |
-| DELETE | `/api/v1/data/:typeName/:id` | 软删除 |
+| POST | `/api/v1/data/:typeName/:id/update` | 更新（body 携带 version，乐观锁） |
+| POST | `/api/v1/data/:typeName/:id/delete` | 软删除 |
 | POST | `/api/v1/data/:typeName/:id/restore` | 恢复软删数据（最终画像「高危数据误删可恢复」） |
 | GET | `/api/v1/data/:typeName/export` | 导出 JSON（含 id / status / created_at；含软删行——否则导出→导入会丢失软删数据） |
 | POST | `/api/v1/data/:typeName/import` | 全量替换导入（multipart/JSON body；响应返回批次汇总：行数/耗时/max id） |
