@@ -1,0 +1,13 @@
+.git
+.github
+bin
+logs
+data
+docs
+deploy
+backups
+*.md
+!README.md
+Dockerfile
+.dockerignore
+config/config.yaml.bak

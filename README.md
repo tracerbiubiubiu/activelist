@@ -33,9 +33,34 @@
 - **调用**：zhuzhao 网关统一 JWT / Casbin / Restrict 鉴权，透传 `X-Operator`（操作者）、`X-Request-ID`（链路追踪）
 - **日志**：activelist 只记技术 / 运行日志（请求级 + 错误级，含 `X-Request-ID`；脱敏暂不做——钩子预留）；业务 / 审计日志由 zhuzhao 记录
 
+## 快速开始（部署态，M-A6 部署件）
+
+```sh
+# 0. 预建跨 compose 共享网络（zhuzhao 网关容器须加入同一网络）
+docker network create zhuzhao_to_activelist
+
+# 1. 注入必需密钥（fail-closed：缺失拒启）
+export ACTIVELIST_CALLER_ZHUZHAO_SK=<与 zhuzhao 网关侧 GATEWAY_SK 同值>
+export ACTIVELIST_PG_PASSWORD=<PG 口令>
+
+# 2. 构建镜像 + 起全栈（PG + apiserver×2 多副本 + 每日备份）
+docker compose -f deploy/compose.yaml up -d --build
+
+# 3. 健康检查（/apiserver 走内部网络；探针免鉴权）
+docker compose -f deploy/compose.yaml exec apiserver \
+  wget -qO- http://127.0.0.1:8080/readyz
+
+# 4. 签名调用验证（zhuzhao 侧：GATEWAY_AK/GATEWAY_SK 同值 + upstreams
+#    prefix=/al target=http://activelist:8080；经网关 /al/api/v1/... 访问）
+```
+
+- 开发态（本地直跑二进制 + 仅 PG 容器）：`deploy/docker-compose.yaml` + `ACTIVELIST_PG_PORT=15432`；
+- 接口清单 / 配置项：[implementation-plan.md §4/§6](./docs/implementation-plan.md)；
+- **备份与恢复**：[deploy/backup/README.md](./deploy/backup/README.md)（每日 pg_dump + WAL 归档，保留 14 份）。
+
 ## 状态
 
 - 文档就绪：设计收敛定稿 + **实现计划就绪**（[implementation-plan.md](./docs/implementation-plan.md)，M-A 验收标准见其 §2）
-- 代码进度（2026-09-08）：**M-A1 骨架 / M-A2 类型注册+建表 已完成**（feat/ma1-skeleton，集成测试全过），**M-A3 CRUD 待启动**
-- 启动前置 ✅ **已就绪**：zhuzhao-utils **v0.2.0 直引无 replace**（activelist 硬依赖 `logger` + `postgres`；v0.1.0 pin 已随 M-A1 升级，见 ADR-003 D1 验证记录）
+- 代码进度（2026-09-09）：**M-A1–M-A5 已交付**（骨架 / 类型注册 / CRUD / Schema 演进 / 导入导出），**M-A6 代码与部署件完成**（AK/SK 验签 + X-Operator + 统一访问日志 + Dockerfile/部署态 compose/备份；实测随部署批）——详见 implementation-plan 里程碑表
+- 启动前置 ✅ **已就绪**：zhuzhao-utils **v0.2.0 直引无 replace**（activelist 硬依赖 `logger` + `postgres` + `response` + `aksk`）；**部署 fail-closed**：`ACTIVELIST_CALLER_ZHUZHAO_SK` 缺失拒启
 - 排期归属：zhuzhao Phase 3 主线 **M-A（activelist 独立实现）**，与其他里程碑无链式依赖（2026-09-02 design-decisions §23.2，详见 ADR-003「排期与集成拆分同步」节）

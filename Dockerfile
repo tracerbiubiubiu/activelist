@@ -1,0 +1,19 @@
+# activelist apiserver 多阶段构建。迁移已 embed 进二进制（internal/repository/migrate.go
+# iofs），镜像内无需 migrations 目录；config 经镜像内置默认 + 环境变量覆盖（§6）。
+FROM golang:1.26-alpine AS build
+WORKDIR /src
+COPY go.mod go.sum ./
+RUN go mod download
+COPY . .
+RUN CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" -o /out/apiserver ./cmd/apiserver
+
+FROM alpine:3.20
+RUN apk add --no-cache ca-certificates tzdata \
+ && addgroup -g 10001 app \
+ && adduser -D -u 10001 -G app app
+WORKDIR /app
+COPY --from=build /out/apiserver /app/apiserver
+COPY config/config.yaml /app/config/config.yaml
+USER app
+EXPOSE 8080
+ENTRYPOINT ["/app/apiserver", "serve", "/app/config/config.yaml"]

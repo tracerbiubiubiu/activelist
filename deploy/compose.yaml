@@ -1,0 +1,95 @@
+# activelist 部署态 compose（M-A6 部署件；开发态 = deploy/docker-compose.yaml 仅 PG）。
+#
+# 拓扑（ADR-003 D5 双 network）：apiserver 跨双网——activelist_internal（仅 PG 可达）
+# 与 zhuzhao_to_activelist（external，由部署侧预建：docker network create zhuzhao_to_activelist，
+# zhuzhao 网关容器须加入同一网络）；PG 仅内网。apiserver 无状态，deploy.replicas=2 多副本
+#（迁移自带会话级 advisory lock，并发启动安全——A7）。
+#
+# 必需环境变量（.env 或 export，缺失拒启/拒建）：
+#   ACTIVELIST_CALLER_ZHUZHAO_SK  zhuzhao 网关出站签名 SK（与网关侧 GATEWAY_SK 同值）
+#   ACTIVELIST_PG_PASSWORD        PG 口令
+#
+# 备份策略：每日 02:00 pg_dump（pgbackup 服务，保留 14 份）+ WAL 归档（archive_timeout
+# 5 分钟）；恢复步骤见 deploy/backup/README.md。
+name: activelist
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_USER: activelist
+      POSTGRES_PASSWORD: ${ACTIVELIST_PG_PASSWORD:?需注入 ACTIVELIST_PG_PASSWORD}
+      POSTGRES_DB: activelist
+      TZ: Asia/Shanghai
+    command:
+      - postgres
+      - -c
+      - archive_mode=on
+      - -c
+      - archive_command=test ! -f /wal_archive/%f && cp %p /wal_archive/%f
+      - -c
+      - archive_timeout=300s
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - wal_archive:/wal_archive
+    networks:
+      - activelist_internal
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U activelist -d activelist"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  apiserver:
+    build: ..
+    image: activelist-apiserver:latest
+    environment:
+      ACTIVELIST_CALLER_ZHUZHAO_SK: ${ACTIVELIST_CALLER_ZHUZHAO_SK:?需注入 ACTIVELIST_CALLER_ZHUZHAO_SK}
+      ACTIVELIST_PG_HOST: postgres
+      ACTIVELIST_PG_PORT: "5432"
+      TZ: Asia/Shanghai
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - activelist_internal
+      - zhuzhao_to_activelist
+    deploy:
+      replicas: 2 # 无状态多副本；扩缩 = docker compose up -d --scale apiserver=N
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8080/healthz || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+
+  pgbackup:
+    image: postgres:15-alpine
+    environment:
+      PGHOST: postgres
+      PGUSER: activelist
+      PGPASSWORD: ${ACTIVELIST_PG_PASSWORD}
+      PGDATABASE: activelist
+      BACKUP_DIR: /backups
+      RETAIN_DAYS: "14"
+    volumes:
+      - backups:/backups
+      - ./backup/backup.sh:/usr/local/bin/backup.sh:ro
+      - wal_archive:/wal_archive:ro
+    entrypoint: ["/bin/sh", "/usr/local/bin/backup.sh"]
+    networks:
+      - activelist_internal
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+networks:
+  activelist_internal: {}
+  zhuzhao_to_activelist:
+    external: true
+
+volumes:
+  pgdata:
+  wal_archive:
+  backups:
