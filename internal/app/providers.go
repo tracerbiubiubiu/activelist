@@ -54,7 +54,14 @@ func provideReadyz(pool *pgxpool.Pool) func() error {
 	}
 }
 
-// provideEngine HTTP 路由引擎。
-func provideEngine(types *service.TypeService, data *service.DataService, ready func() error) *gin.Engine {
-	return handler.New(handler.Deps{Types: types, Data: data, Ready: ready})
+// provideEngine HTTP 路由引擎（M-A6：验签密钥环/读体上限/访问日志注入）。
+func provideEngine(cfg *config.Config, logger *slog.Logger, types *service.TypeService, data *service.DataService, ready func() error) *gin.Engine {
+	callers := make(map[string][]byte, len(cfg.Security.Callers))
+	for ak, sk := range cfg.Security.Callers {
+		callers[ak] = []byte(sk)
+	}
+	return handler.New(handler.Deps{
+		Types: types, Data: data, Ready: ready,
+		Callers: callers, MaxBodyBytes: cfg.Business.ImportMaxBytes, Logger: logger,
+	})
 }

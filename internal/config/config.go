@@ -57,8 +57,8 @@ type Business struct {
 }
 
 type Security struct {
-	// Callers 验签密钥环（AK→SK，当前唯一调用方 zhuzhao）。中间件随 M-A6 落地，
-	// 届时空密钥环拒绝启动（fail-closed，对齐 taskrunner C2）；本里程碑仅承载。
+	// Callers 验签密钥环（AK→SK，当前唯一调用方 zhuzhao）。验签中间件已随 M-A6
+	// 落地：空密钥环拒绝启动（fail-closed，对齐 taskrunner C2，app.InitializeApp）。
 	Callers map[string]string `mapstructure:"callers"`
 }
 

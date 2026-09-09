@@ -5,6 +5,7 @@ package handler
 
 import (
 	"errors"
+	"log/slog"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -15,14 +16,30 @@ import (
 	"github.com/tracerbiubiubiu/activelist/internal/service"
 )
 
-// operatorOf X-Operator 断言取值；中间件随 M-A6 落地，当前恒 system。
+// operatorFallback X-Operator 缺省值（AKSKAuth+Operator 中间件缺头时的兜底，
+// 对齐 16 号 §9 访问日志 operator 口径）。
 const operatorFallback = "system"
 
+// currentOperator 取经签名校验透传的操作者；直连开发态（未挂验签）回退 system。
+func currentOperator(c *gin.Context) string {
+	if v := c.GetString("operator"); v != "" {
+		return v
+	}
+	return operatorFallback
+}
+
 // Deps handler 依赖。Ready 为 readyz 探针（检 PG 可查询）；nil = 恒就绪（测试用）。
+// Callers 为 AK/SK 验签密钥环（AK→SK）：非空时 /api/v1 挂验签 + Operator 中间件
+// （M-A6），为空时不挂（内网开发态/测试构造）；生产装配在 app 层对空环 fail-closed。
+// MaxBodyBytes = 验签读体上限（= cfg.Business.ImportMaxBytes，勿用 aksk 默认 8MB）。
+// Logger 非 nil 时启用统一访问日志出口（16 号 §9）。
 type Deps struct {
-	Types *service.TypeService
-	Data  *service.DataService
-	Ready func() error
+	Types        *service.TypeService
+	Data         *service.DataService
+	Ready        func() error
+	Callers      map[string][]byte
+	MaxBodyBytes int64
+	Logger       *slog.Logger
 }
 
 // New 构造路由引擎。
@@ -30,6 +47,9 @@ func New(d Deps) *gin.Engine {
 	gin.SetMode(gin.ReleaseMode)
 	r := gin.New()
 	r.Use(gin.Recovery(), middleware.RequestID())
+	if d.Logger != nil {
+		r.Use(middleware.AccessLog(d.Logger))
+	}
 
 	// 探针裸露（不进业务组）——容器编排存活/就绪检查用。
 	r.GET("/healthz", func(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"status": "ok"}) })
@@ -43,8 +63,12 @@ func New(d Deps) *gin.Engine {
 		c.JSON(http.StatusOK, gin.H{"status": "ready"})
 	})
 
-	// 类型管理（M-A2；A1）。鉴权随 M-A6 AK/SK 中间件。
+	// 类型管理（M-A2；A1）。M-A6：Callers 非空时 /api/v1 走 AK/SK 验签 +
+	// X-Operator 透传（验签失败请求到不了 handler）。
 	v1 := r.Group("/api/v1")
+	if len(d.Callers) > 0 {
+		v1.Use(middleware.AKSKAuth(d.Callers, d.MaxBodyBytes), middleware.Operator())
+	}
 	{
 		types := v1.Group("/admin/types")
 		{
@@ -81,7 +105,7 @@ func (d *Deps) registerType(c *gin.Context) {
 		BadRequest(c, "请求体解析失败（type_name 与 fields 必填）")
 		return
 	}
-	def, err := d.Types.Register(c.Request.Context(), in, operatorFallback)
+	def, err := d.Types.Register(c.Request.Context(), in, currentOperator(c))
 	if err != nil {
 		Fail(c, asAppErr(err))
 		return
@@ -114,7 +138,7 @@ func (d *Deps) getType(c *gin.Context) {
 
 // deprecateType 废弃类型（幂等；不存在 404）。
 func (d *Deps) deprecateType(c *gin.Context) {
-	def, err := d.Types.Deprecate(c.Request.Context(), c.Param("typeName"), operatorFallback)
+	def, err := d.Types.Deprecate(c.Request.Context(), c.Param("typeName"), currentOperator(c))
 	if err != nil {
 		Fail(c, asAppErr(err))
 		return
@@ -129,7 +153,7 @@ func (d *Deps) evolveType(c *gin.Context) {
 		BadRequest(c, "请求体解析失败（fields 全量定义与 version 必填）")
 		return
 	}
-	def, err := d.Types.Evolve(c.Request.Context(), c.Param("typeName"), in, operatorFallback)
+	def, err := d.Types.Evolve(c.Request.Context(), c.Param("typeName"), in, currentOperator(c))
 	if err != nil {
 		Fail(c, asAppErr(err))
 		return

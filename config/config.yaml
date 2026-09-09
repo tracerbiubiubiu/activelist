@@ -24,8 +24,8 @@ business:
   import_batch_rows: 1000    # 全量替换导入同事务内的分批行数
   import_max_bytes: 1073741824  # 导入 body 硬上限 1GiB（MaxBytesReader，防超大 body 占满磁盘/WAL）
 
-# AK/SK 验签密钥环（基线 §9；预期唯一调用方 zhuzhao）。中间件随 M-A6 落地，
-# 本里程碑仅承载配置——M-A6 起密钥环空拒绝启动（fail-closed，对齐 taskrunner）。
+# AK/SK 验签密钥环（基线 §9；预期唯一调用方 zhuzhao）。验签中间件已落地（M-A6）——
+# 密钥环空拒绝启动（fail-closed，对齐 taskrunner）；SK 经 env 注入，不入库不入 git。
 security:
   callers:
     zhuzhao: ${ACTIVELIST_CALLER_ZHUZHAO_SK:-}

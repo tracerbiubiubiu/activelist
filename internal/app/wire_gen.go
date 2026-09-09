@@ -12,12 +12,19 @@
 package app
 
 import (
+	"errors"
+
 	"github.com/tracerbiubiubiu/activelist/internal/config"
 	"github.com/tracerbiubiubiu/activelist/internal/service"
 )
 
 // InitializeApp 依赖装配入口。
 func InitializeApp(cfg *config.Config) (*App, func(), error) {
+	// M-A6 fail-closed（启动级）：空验签密钥环拒绝启动（对齐 taskrunner C2；
+	// handler 层空环为请求级 401——双保险的启动半边）。
+	if len(cfg.Security.Callers) == 0 {
+		return nil, nil, errors.New("security.callers 为空——拒绝启动（M-A6 fail-closed；配置 ACTIVELIST_CALLER_ZHUZHAO_SK）")
+	}
 	logger := provideLogger(cfg)
 	pool, cleanupPool, err := providePool(cfg)
 	if err != nil {
@@ -25,6 +32,6 @@ func InitializeApp(cfg *config.Config) (*App, func(), error) {
 	}
 	types := service.NewTypeService(pool)
 	data := service.NewDataService(pool, cfg.Business.PageSizeDefault, cfg.Business.PageSizeMax, cfg.Business.ImportBatchRows, cfg.Business.ImportMaxBytes)
-	engine := provideEngine(types, data, provideReadyz(pool))
+	engine := provideEngine(cfg, logger, types, data, provideReadyz(pool))
 	return NewApp(cfg, logger, engine), func() { cleanupPool() }, nil
 }

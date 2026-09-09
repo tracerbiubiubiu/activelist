@@ -20,7 +20,7 @@ func (d *Deps) insertData(c *gin.Context) {
 		BadRequest(c, "请求体解析失败（data 必填且须为 JSON 对象）")
 		return
 	}
-	doc, err := d.Data.Insert(c.Request.Context(), c.Param("typeName"), in, operatorFallback)
+	doc, err := d.Data.Insert(c.Request.Context(), c.Param("typeName"), in, currentOperator(c))
 	if err != nil {
 		Fail(c, asAppErr(err))
 		return
@@ -98,7 +98,7 @@ func (d *Deps) updateData(c *gin.Context) {
 		BadRequest(c, "请求体解析失败（data 必填且须为 JSON 对象）")
 		return
 	}
-	doc, err := d.Data.Update(c.Request.Context(), c.Param("typeName"), id, in, operatorFallback)
+	doc, err := d.Data.Update(c.Request.Context(), c.Param("typeName"), id, in, currentOperator(c))
 	if err != nil {
 		Fail(c, asAppErr(err))
 		return
@@ -112,7 +112,7 @@ func (d *Deps) deleteData(c *gin.Context) {
 	if !ok {
 		return
 	}
-	doc, err := d.Data.SoftDelete(c.Request.Context(), c.Param("typeName"), id, operatorFallback)
+	doc, err := d.Data.SoftDelete(c.Request.Context(), c.Param("typeName"), id, currentOperator(c))
 	if err != nil {
 		Fail(c, asAppErr(err))
 		return
@@ -126,7 +126,7 @@ func (d *Deps) restoreData(c *gin.Context) {
 	if !ok {
 		return
 	}
-	doc, err := d.Data.Restore(c.Request.Context(), c.Param("typeName"), id, operatorFallback)
+	doc, err := d.Data.Restore(c.Request.Context(), c.Param("typeName"), id, currentOperator(c))
 	if err != nil {
 		Fail(c, asAppErr(err))
 		return
@@ -193,7 +193,7 @@ func (d *Deps) exportData(c *gin.Context) {
 // write_timeout 配套」的闭环）。
 func (d *Deps) importData(c *gin.Context) {
 	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, d.Data.ImportMaxBytes())
-	res, err := d.Data.Import(c.Request.Context(), c.Param("typeName"), c.Request.Body, operatorFallback)
+	res, err := d.Data.Import(c.Request.Context(), c.Param("typeName"), c.Request.Body, currentOperator(c))
 	if err != nil {
 		Fail(c, asAppErr(err))
 		return
