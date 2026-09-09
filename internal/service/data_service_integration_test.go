@@ -25,7 +25,7 @@ import (
 )
 
 func newDataSvc(pool *pgxpool.Pool) *service.DataService {
-	return service.NewDataService(pool, 20, 100)
+	return service.NewDataService(pool, 20, 100, 500)
 }
 
 func insertDoc(t *testing.T, dsvc *service.DataService, typeName string, qty int, name string) *repository.Document {
@@ -300,7 +300,7 @@ func TestA1_DeprecatedTypeRejectsWrite(t *testing.T) {
 func TestA3_HTTPEnvelopeData(t *testing.T) {
 	pool, tsvc := setupPG(t)
 	// 故意用小 max（3）验证 page_size 钳制回显
-	dsvc := service.NewDataService(pool, 2, 3)
+	dsvc := service.NewDataService(pool, 2, 3, 500)
 	gin.SetMode(gin.TestMode)
 	r := handler.New(handler.Deps{Types: tsvc, Data: dsvc})
 

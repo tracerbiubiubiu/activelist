@@ -30,6 +30,7 @@ type dbtx interface {
 	Exec(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error)
 	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
 	Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error)
+	SendBatch(ctx context.Context, b *pgx.Batch) pgx.BatchResults
 }
 
 // Document 数据行完整文档。写接口统一返回变更后完整文档（§4——审计契约素材，
@@ -81,6 +82,9 @@ func InsertDoc(ctx context.Context, q dbtx, typeName string, data []byte, operat
 		 VALUES ($1, COALESCE(NULLIF($2, ''), 'system'), COALESCE(NULLIF($2, ''), 'system'))
 		 RETURNING `+docCols, data, operator))
 	if err != nil {
+		if e := errLockWait(err); e != nil {
+			return nil, e
+		}
 		return nil, apperr.New(500, apperr.CodeInternal, "插入数据失败")
 	}
 	return d, nil
@@ -108,6 +112,9 @@ func GetDocForUpdate(ctx context.Context, q dbtx, typeName string, id int64) (*D
 		return nil, notFound()
 	}
 	if err != nil {
+		if e := errLockWait(err); e != nil {
+			return nil, e
+		}
 		return nil, apperr.New(500, apperr.CodeInternal, "锁定数据行失败")
 	}
 	return d, nil
@@ -126,6 +133,9 @@ func UpdateDocData(ctx context.Context, q dbtx, typeName string, id, expectedVer
 			WithDetail("expected_version", expectedVersion)
 	}
 	if err != nil {
+		if e := errLockWait(err); e != nil {
+			return nil, e
+		}
 		return nil, apperr.New(500, apperr.CodeInternal, "更新数据失败")
 	}
 	return d, nil
@@ -144,6 +154,9 @@ func UpdateDocStatus(ctx context.Context, q dbtx, typeName string, id int64, fro
 		return nil, false, nil
 	}
 	if err != nil {
+		if e := errLockWait(err); e != nil {
+			return nil, false, e
+		}
 		return nil, false, apperr.New(500, apperr.CodeInternal, "更新数据状态失败")
 	}
 	return d, true, nil

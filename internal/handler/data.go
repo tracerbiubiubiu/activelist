@@ -3,6 +3,7 @@
 package handler
 
 import (
+	"net/http"
 	"strconv"
 	"time"
 
@@ -166,4 +167,25 @@ func parseCursor(c *gin.Context) (*repository.Cursor, bool) {
 		return nil, false
 	}
 	return &repository.Cursor{CreatedAt: t, ID: id}, true
+}
+
+// exportData 全量导出（含软删行）。文件本体 = 裸 JSON 数组（实现拍板：信封包
+// 文件体破坏流式与导出/导入对称性）——本端点不走 §6.8 信封；流中途错误只能在
+// 响应头之后截断（前置 gate 错误仍走信封错误响应）。
+func (d *Deps) exportData(c *gin.Context) {
+	c.Header("Content-Type", "application/json")
+	c.Status(http.StatusOK)
+	if err := d.Data.Export(c.Request.Context(), c.Param("typeName"), c.Writer); err != nil {
+		Fail(c, asAppErr(err))
+	}
+}
+
+// importData 全量替换导入（body = 导出同构的 JSON 数组，流式分批处理）。
+func (d *Deps) importData(c *gin.Context) {
+	res, err := d.Data.Import(c.Request.Context(), c.Param("typeName"), c.Request.Body, operatorFallback)
+	if err != nil {
+		Fail(c, asAppErr(err))
+		return
+	}
+	OK(c, res)
 }

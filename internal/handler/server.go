@@ -65,6 +65,10 @@ func New(d Deps) *gin.Engine {
 			data.PUT("/:typeName/:id", d.updateData)
 			data.DELETE("/:typeName/:id", d.deleteData)
 			data.POST("/:typeName/:id/restore", d.restoreData)
+
+			// 导入导出（M-A5；A5）。export=静态段与 :id 参数同级（gin 静态优先）
+			data.GET("/:typeName/export", d.exportData)
+			data.POST("/:typeName/import", d.importData)
 		}
 	}
 	return r
