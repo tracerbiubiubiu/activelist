@@ -96,6 +96,20 @@ func AccessLog(logger *slog.Logger) gin.HandlerFunc {
 			"params", params,
 			"duration_ms", time.Since(start).Milliseconds(),
 		)
+
+		// 错误级出口（A6）：消费 c.Errors——当前唯一来源是 export 流中途截断
+		//（响应头已发无法改状态码，handler 只能 attach），此前无人消费 = 服务端
+		// 无日志的静默失败。带请求上下文单列一行；无错误不产生额外日志。
+		if ge := c.Errors.Last(); ge != nil {
+			logger.Error("request error",
+				"method", c.Request.Method,
+				"path", c.Request.URL.Path,
+				"status", c.Writer.Status(),
+				"operator", op,
+				"request_id", c.GetString("request_id"),
+				"err", ge.Err.Error(),
+			)
+		}
 	}
 }
 

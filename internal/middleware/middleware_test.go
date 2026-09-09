@@ -5,6 +5,7 @@ package middleware
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -144,6 +145,31 @@ func TestAccessLog_NilLoggerNoop(t *testing.T) {
 	w := httptest.NewRecorder()
 	r.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/ping", nil))
 	require.Equal(t, http.StatusOK, w.Code)
+}
+
+// A6 错误级出口：attach 到 c.Errors 的错误由 AccessLog 消费为 ERROR 行
+// （request_id/operator 上下文齐全）——export 流中途截断不再服务端无日志。
+func TestAccessLog_ErrorLineForAttachedError(t *testing.T) {
+	var buf bytes.Buffer
+	logger := slog.New(slog.NewJSONHandler(&buf, nil))
+	gin.SetMode(gin.ReleaseMode)
+	r := gin.New()
+	r.Use(RequestID(), AccessLog(logger))
+	r.GET("/boom", func(c *gin.Context) {
+		_ = c.Error(errors.New("stream truncated")) // 头已发场景：状态仍是 2xx
+		c.String(http.StatusOK, "partial")
+	})
+	r.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/boom", nil))
+
+	lines := strings.Split(strings.TrimSpace(buf.String()), "\n")
+	require.Len(t, lines, 2, "access 行 + request error 行")
+	var errLine map[string]any
+	require.NoError(t, json.Unmarshal([]byte(lines[1]), &errLine))
+	require.Equal(t, "request error", errLine["msg"])
+	require.Equal(t, "stream truncated", errLine["err"])
+	require.Equal(t, "ERROR", errLine["level"])
+	require.NotEmpty(t, errLine["request_id"])
+	require.Equal(t, "system", errLine["operator"])
 }
 
 // 时间窗语义抽验：签发时刻拨回 10 分钟（> 默认 ±5min 窗口）→ 401。

@@ -111,7 +111,7 @@ func UpdateSchema(ctx context.Context, tx pgx.Tx, typeName string, fields []Fiel
 	tag, err := tx.Exec(ctx, `
 		UPDATE data_types SET schema_def = $3, version = version + 1,
 		       updated_by = COALESCE(NULLIF($4, ''), 'system'), updated_at = NOW()
-		WHERE type_name = $1 AND version = $2`,
+		WHERE type_name = $1 AND version = $2 AND status = 'active'`,
 		typeName, expectedVersion, def, operator)
 	if err != nil {
 		return false, apperr.New(500, apperr.CodeInternal, "演进类型失败")

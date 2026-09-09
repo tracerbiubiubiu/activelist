@@ -337,6 +337,12 @@ func (s *DataService) Import(ctx context.Context, typeName string, r io.Reader, 
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 
+	// 导入互斥同样快速失败（审计 M1）：SHARE ROW EXCLUSIVE 会长时持锁，
+	// 同类型并发导入的第二等待者若不设超时将无界挂起并占用连接
+	if err := setLockTimeout(ctx, tx); err != nil {
+		return nil, err
+	}
+
 	if err := repository.LockForReplace(ctx, tx, def.TypeName); err != nil {
 		return nil, err
 	}
