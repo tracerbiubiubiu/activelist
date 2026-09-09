@@ -42,7 +42,7 @@ func TestA3_EvolveOptionalCompat(t *testing.T) {
 	require.NoError(t, err)
 
 	def, err := tsvc.Evolve(ctx, "ev_opt", service.EvolveInput{
-		Fields: append(ma4Fields(), meta.Field{Name: "tag", Type: "string"}),
+		Fields:  append(ma4Fields(), meta.Field{Name: "tag", Type: "string"}),
 		Version: 1}, "system")
 	require.NoError(t, err)
 	require.EqualValues(t, 2, def.Version)
@@ -80,7 +80,7 @@ func TestA3_EvolveRequiredLazy(t *testing.T) {
 	require.NoError(t, err)
 
 	_, err = tsvc.Evolve(ctx, "ev_req", service.EvolveInput{
-		Fields: append(ma4Fields(), meta.Field{Name: "level", Type: "int", Required: true}),
+		Fields:  append(ma4Fields(), meta.Field{Name: "level", Type: "int", Required: true}),
 		Version: 1}, "system")
 	require.NoError(t, err)
 
