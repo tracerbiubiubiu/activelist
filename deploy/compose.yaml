@@ -53,8 +53,10 @@ services:
       postgres:
         condition: service_healthy
     networks:
-      - activelist_internal
-      - zhuzhao_to_activelist
+      activelist_internal: {}
+      zhuzhao_to_activelist:
+        aliases:
+          - activelist # 供 zhuzhao 网关以 http://activelist:8080 稳定寻址（多副本缩扩容不变）
     deploy:
       replicas: 2 # 无状态多副本；扩缩 = docker compose up -d --scale apiserver=N
     healthcheck:
