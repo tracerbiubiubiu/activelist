@@ -12,6 +12,8 @@ const (
 	CodeTypeExists    = "TYPE_ALREADY_EXISTS"    // 类型已存在 → 409
 	CodeTypeDepr      = "TYPE_DEPRECATED"        // 类型已废弃不可写入 → 409
 	CodeDataNotFound  = "DATA_NOT_FOUND"         // 数据行不存在 → 404
+	CodeFieldDepr     = "FIELD_DEPRECATED"       // 旧数据携带已移除字段 → 422（懒执行迁移提示，§4）
+	CodeNewRequired   = "NEW_REQUIRED_FIELD"     // 旧数据缺演进新增必填字段 → 422（懒执行迁移提示，§4）
 	CodeConflict      = "CONFLICT"               // 并发冲突/版本不匹配 → 409
 	CodeInternal      = "INTERNAL_ERROR"         // 内部错误 → 500
 	CodeDependency    = "DEPENDENCY_UNAVAILABLE" // 依赖不可用 → 503

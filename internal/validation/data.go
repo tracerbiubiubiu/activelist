@@ -26,7 +26,8 @@ func ValidateData(fields []meta.Field, data map[string]any) *apperr.Error {
 				return apperr.New(422, apperr.CodeReservedField, "字段名与保留字段冲突: "+k).
 					WithDetail("field", k)
 			}
-			return invalid("未知字段（schema 中不存在）: "+k).WithDetail("field", k)
+			return invalid("未知字段（schema 中不存在）: "+k).
+				WithDetail("field", k).WithDetail("reason", "unknown_field")
 		}
 		if err := checkValue(f, v); err != nil {
 			return err
@@ -34,7 +35,8 @@ func ValidateData(fields []meta.Field, data map[string]any) *apperr.Error {
 	}
 	for _, f := range fields {
 		if v, ok := data[f.Name]; (!ok || v == nil) && f.Required {
-			return invalid("缺少必填字段: "+f.Name).WithDetail("field", f.Name)
+			return invalid("缺少必填字段: "+f.Name).
+				WithDetail("field", f.Name).WithDetail("reason", "missing_required")
 		}
 	}
 	return nil

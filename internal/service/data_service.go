@@ -69,7 +69,7 @@ func (s *DataService) Insert(ctx context.Context, typeName string, in InsertInpu
 		return nil, err
 	}
 	if err := validation.ValidateData(def.Fields, in.Data); err != nil {
-		return nil, err
+		return nil, s.mapDataValidationError(err, def, false)
 	}
 	raw, err := json.Marshal(in.Data)
 	if err != nil {
@@ -128,7 +128,7 @@ func (s *DataService) Update(ctx context.Context, typeName string, id int64, in 
 
 	merged := mergeData(doc.Data, in.Data)
 	if err := validation.ValidateData(def.Fields, merged); err != nil {
-		return nil, err
+		return nil, s.mapDataValidationError(err, def, true)
 	}
 	raw, err := json.Marshal(merged)
 	if err != nil {
@@ -206,6 +206,42 @@ func (s *DataService) Restore(ctx context.Context, typeName string, id int64, op
 		return nil, apperr.New(500, apperr.CodeInternal, "提交恢复事务失败")
 	}
 	return doc, nil
+}
+
+// mapDataValidationError 数据写路径校验错误 → 懒执行契约分档（§4：FIELD_DEPRECATED /
+// NEW_REQUIRED_FIELD 迁移提示）。validation 返回的 reason 分档：
+//   - missing_required：更新路径 = 旧数据未含演进新增必填字段 → NEW_REQUIRED_FIELD
+//     （错误信息含迁移指引，A3）；插入路径保持 VALIDATION_ERROR（新建数据本就该全量给齐）。
+//   - unknown_field：查字段史——曾存在于历史 schema = 已移除字段待清理 →
+//     FIELD_DEPRECATED；否则维持 VALIDATION_ERROR（真拼写错误）。
+func (s *DataService) mapDataValidationError(err error, def *meta.Definition, isUpdate bool) error {
+	ae, ok := err.(*apperr.Error)
+	if !ok {
+		return err
+	}
+	field, _ := ae.Detail["field"].(string)
+	switch ae.Detail["reason"] {
+	case "missing_required":
+		if !isUpdate {
+			return ae
+		}
+		return apperr.New(422, apperr.CodeNewRequired,
+			"缺少必填字段: "+field+"——旧数据未含 schema 演进新增的必填字段，须补齐该字段后方可更新（或经导入全量重灌）").
+			WithDetail("field", field)
+	case "unknown_field":
+		existed, herr := meta.FieldExistedInHistory(context.Background(), s.pool, def.TypeName, field)
+		if herr != nil {
+			return herr
+		}
+		if existed {
+			return apperr.New(422, apperr.CodeFieldDepr,
+				"字段已从 schema 移除: "+field+"——旧数据须移除该字段后方可写入（或经导入全量重灌）").
+				WithDetail("field", field)
+		}
+		return ae
+	default:
+		return ae
+	}
 }
 
 // mergeData 更新合并：旧行 data 为底、body 逐键覆盖（部分更新语义——未提及的

@@ -81,6 +81,12 @@ func TestValidateData(t *testing.T) {
 		require.Equal(t, 422, err.HTTP)
 		require.Equal(t, "RESERVED_FIELD", err.Code)
 	})
+	t.Run("reason 分档供懒执行映射（M-A4）", func(t *testing.T) {
+		err := ValidateData(sampleFields(), map[string]any{})
+		require.Equal(t, "missing_required", err.Detail["reason"])
+		err = ValidateData(sampleFields(), map[string]any{"name": "a", "oops": 1})
+		require.Equal(t, "unknown_field", err.Detail["reason"])
+	})
 	t.Run("nil data 等价空对象（required 兜底报错）", func(t *testing.T) {
 		err := ValidateData(sampleFields(), nil)
 		require.Equal(t, 422, err.HTTP)

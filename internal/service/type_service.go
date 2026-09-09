@@ -57,6 +57,61 @@ func (s *TypeService) Register(ctx context.Context, in RegisterInput, operator s
 	return meta.GetByName(ctx, s.pool, in.TypeName)
 }
 
+// EvolveInput schema 演进请求体（POST /api/v1/admin/types/:typeName/schema）。
+// 全量定义、非字段级 merge（§7）；version 为元数据行乐观锁。
+type EvolveInput struct {
+	Fields  []meta.Field `json:"fields"`
+	Version int64        `json:"version" binding:"required"`
+}
+
+// Evolve schema 演进（M-A4；方案 D）：全量定义校验 → [事务：乐观锁替换 + 历史] →
+// 提交。兼容变更（加 optional/放宽）零迁移；破坏性变更允许提交、旧数据懒执行——
+// 下次数据更新按新 schema 校验 422（NEW_REQUIRED_FIELD / FIELD_DEPRECATED 迁移提示）。
+// 废弃类型拒绝演进（终态不再扩 schema）；不存在 404；版本不匹配 409 须重读重提。
+func (s *TypeService) Evolve(ctx context.Context, typeName string, in EvolveInput, operator string) (*meta.Definition, error) {
+	if err := validation.ValidateFields(in.Fields); err != nil {
+		return nil, err
+	}
+	cur, err := meta.GetByName(ctx, s.pool, typeName)
+	if err != nil {
+		return nil, err
+	}
+	if cur.Status == meta.StatusDeprecated {
+		return nil, apperr.New(409, apperr.CodeTypeDepr, "类型已废弃，拒绝演进: "+typeName).
+			WithDetail("type_name", typeName)
+	}
+
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return nil, apperr.New(500, apperr.CodeInternal, "开启事务失败")
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	moved, err := meta.UpdateSchema(ctx, tx, typeName, in.Fields, in.Version, operator)
+	if err != nil {
+		return nil, err
+	}
+	if !moved {
+		return nil, apperr.New(409, apperr.CodeConflict, "schema 版本不匹配（已被并发演进/废弃），须重读最新定义后重提").
+			WithDetail("expected_version", in.Version).WithDetail("type_name", typeName)
+	}
+	if err := meta.InsertHistory(ctx, tx, typeName, "evolve", in.Fields, operator); err != nil {
+		return nil, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return nil, apperr.New(500, apperr.CodeInternal, "提交演进事务失败")
+	}
+	return meta.GetByName(ctx, s.pool, typeName)
+}
+
+// History schema 变更历史（新→旧；类型不存在 404）。
+func (s *TypeService) History(ctx context.Context, typeName string) ([]meta.HistoryEntry, error) {
+	if _, err := meta.GetByName(ctx, s.pool, typeName); err != nil {
+		return nil, err
+	}
+	return meta.ListHistory(ctx, s.pool, typeName)
+}
+
 // Get 查类型当前 schema 定义。
 func (s *TypeService) Get(ctx context.Context, typeName string) (*meta.Definition, error) {
 	return meta.GetByName(ctx, s.pool, typeName)

@@ -52,6 +52,8 @@ func New(d Deps) *gin.Engine {
 			types.GET("", d.listTypes)
 			types.GET("/:typeName", d.getType)
 			types.POST("/:typeName/deprecate", d.deprecateType)
+			types.POST("/:typeName/schema", d.evolveType)
+			types.GET("/:typeName/history", d.listTypeHistory)
 		}
 
 		// 数据 CRUD（M-A3；A2/A4）。软删行单查可见、列表默认排除（§7）。
@@ -114,6 +116,34 @@ func (d *Deps) deprecateType(c *gin.Context) {
 		return
 	}
 	OK(c, def)
+}
+
+// evolveType schema 演进（方案 D；不存在 404 / 已废弃 409 / 版本冲突 409 / 非法 422）。
+func (d *Deps) evolveType(c *gin.Context) {
+	var in service.EvolveInput
+	if err := c.ShouldBindJSON(&in); err != nil || len(in.Fields) == 0 {
+		BadRequest(c, "请求体解析失败（fields 全量定义与 version 必填）")
+		return
+	}
+	def, err := d.Types.Evolve(c.Request.Context(), c.Param("typeName"), in, operatorFallback)
+	if err != nil {
+		Fail(c, asAppErr(err))
+		return
+	}
+	OK(c, def)
+}
+
+// listTypeHistory schema 变更历史（新→旧）。
+func (d *Deps) listTypeHistory(c *gin.Context) {
+	list, err := d.Types.History(c.Request.Context(), c.Param("typeName"))
+	if err != nil {
+		Fail(c, asAppErr(err))
+		return
+	}
+	if list == nil {
+		list = []meta.HistoryEntry{}
+	}
+	OK(c, gin.H{"list": list, "total": len(list)})
 }
 
 // asAppErr 非 *apperr.Error 的意外错误兜底为 500（防内部细节泄漏）。

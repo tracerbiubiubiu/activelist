@@ -93,6 +93,93 @@ func InsertHistory(ctx context.Context, tx pgx.Tx, typeName, op string, fields [
 	return nil
 }
 
+// HistoryEntry schema 变更历史行（data_type_schema_history；只追加，每行存变更后完整 schema）。
+type HistoryEntry struct {
+	Op        string    `json:"op"` // register | evolve | deprecate
+	Fields    []Field   `json:"fields"`
+	ChangedBy string    `json:"changed_by"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
+// UpdateSchema schema 演进（方案 D，事务内）：全量定义替换 + 元数据行乐观锁
+// （§7——后到者 0 行 → moved=false，service 转 409 并提示重读重提）。
+func UpdateSchema(ctx context.Context, tx pgx.Tx, typeName string, fields []Field, expectedVersion int64, operator string) (bool, error) {
+	def, err := schemaDefJSON(fields)
+	if err != nil {
+		return false, apperr.New(500, apperr.CodeInternal, "schema 序列化失败")
+	}
+	tag, err := tx.Exec(ctx, `
+		UPDATE data_types SET schema_def = $3, version = version + 1,
+		       updated_by = COALESCE(NULLIF($4, ''), 'system'), updated_at = NOW()
+		WHERE type_name = $1 AND version = $2`,
+		typeName, expectedVersion, def, operator)
+	if err != nil {
+		return false, apperr.New(500, apperr.CodeInternal, "演进类型失败")
+	}
+	return tag.RowsAffected() > 0, nil
+}
+
+// ListHistory 变更历史（新→旧；行数受演进频次约束，无分页）。
+func ListHistory(ctx context.Context, pool pgxPool, typeName string) ([]HistoryEntry, error) {
+	rows, err := pool.Query(ctx, `
+		SELECT op, schema_def, changed_by, created_at
+		FROM data_type_schema_history WHERE type_name = $1
+		ORDER BY created_at DESC, id DESC`, typeName)
+	if err != nil {
+		return nil, apperr.New(500, apperr.CodeInternal, "查询变更历史失败")
+	}
+	defer rows.Close()
+	var out []HistoryEntry
+	for rows.Next() {
+		var h HistoryEntry
+		var raw []byte
+		if err := rows.Scan(&h.Op, &raw, &h.ChangedBy, &h.CreatedAt); err != nil {
+			return nil, apperr.New(500, apperr.CodeInternal, "读取变更历史失败")
+		}
+		var sd SchemaDef
+		if err := json.Unmarshal(raw, &sd); err != nil {
+			return nil, apperr.New(500, apperr.CodeInternal, "历史 schema 解析失败")
+		}
+		h.Fields = sd.Fields
+		out = append(out, h)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, apperr.New(500, apperr.CodeInternal, "迭代变更历史失败")
+	}
+	return out, nil
+}
+
+// FieldExistedInHistory 字段是否出现在该类型任一历史 schema 中——数据写路径遇
+// 「未知字段」时区分「已移除字段（FIELD_DEPRECATED，旧数据待清理）」与真拼写
+// 错误（VALIDATION_ERROR）。仅错误路径触发，历史行数为演进频次级，成本可忽略。
+func FieldExistedInHistory(ctx context.Context, pool pgxPool, typeName, field string) (bool, error) {
+	rows, err := pool.Query(ctx,
+		`SELECT schema_def FROM data_type_schema_history WHERE type_name = $1`, typeName)
+	if err != nil {
+		return false, apperr.New(500, apperr.CodeInternal, "查询变更历史失败")
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var raw []byte
+		if err := rows.Scan(&raw); err != nil {
+			return false, apperr.New(500, apperr.CodeInternal, "读取变更历史失败")
+		}
+		var sd SchemaDef
+		if err := json.Unmarshal(raw, &sd); err != nil {
+			return false, apperr.New(500, apperr.CodeInternal, "历史 schema 解析失败")
+		}
+		for _, f := range sd.Fields {
+			if f.Name == field {
+				return true, nil
+			}
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return false, apperr.New(500, apperr.CodeInternal, "迭代变更历史失败")
+	}
+	return false, nil
+}
+
 // scanDef 行 → Definition（schema_def JSONB 解析失败=元数据被外部污染，报内部错误）。
 func scanDef(row pgx.Row) (*Definition, error) {
 	var d Definition
