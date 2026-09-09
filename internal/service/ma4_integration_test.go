@@ -230,7 +230,7 @@ func TestA3_HTTPSchemaHistory(t *testing.T) {
 	w := httptest.NewRecorder()
 	r.ServeHTTP(w, httptest.NewRequest(http.MethodPost, "/api/v1/admin/types",
 		strings.NewReader(`{"type_name":"ev_e2e","fields":[{"name":"name","type":"string","required":true}]}`)))
-	require.Equal(t, http.StatusCreated, w.Code)
+	require.Equal(t, http.StatusOK, w.Code)
 
 	// 演进 200 + 版本递增
 	w = httptest.NewRecorder()
@@ -250,7 +250,7 @@ func TestA3_HTTPSchemaHistory(t *testing.T) {
 	r.ServeHTTP(w, httptest.NewRequest(http.MethodPost, "/api/v1/admin/types/ev_e2e/schema",
 		strings.NewReader(`{"fields":[{"name":"name","type":"string","required":true}],"version":1}`)))
 	require.Equal(t, http.StatusConflict, w.Code)
-	require.Contains(t, w.Body.String(), `"error_code":"CONFLICT"`)
+	require.Contains(t, w.Body.String(), `"code":100008`)
 
 	// 历史 200：2 条，新→旧
 	w = httptest.NewRecorder()

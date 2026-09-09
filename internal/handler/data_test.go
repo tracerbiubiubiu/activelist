@@ -34,7 +34,7 @@ func TestDataBindingNegatives(t *testing.T) {
 			strings.NewReader(`{}`))},
 		{"插入 data 非对象", httptest.NewRequest(http.MethodPost, "/api/v1/data/k",
 			strings.NewReader(`{"data":[1,2]}`))},
-		{"更新缺 version", httptest.NewRequest(http.MethodPut, "/api/v1/data/k/1",
+		{"更新缺 version", httptest.NewRequest(http.MethodPost, "/api/v1/data/k/1/update",
 			strings.NewReader(`{"data":{"a":1}}`))},
 	}
 	for _, tc := range cases {
@@ -42,7 +42,7 @@ func TestDataBindingNegatives(t *testing.T) {
 			w := httptest.NewRecorder()
 			r.ServeHTTP(w, tc.req)
 			require.Equal(t, http.StatusBadRequest, w.Code, w.Body.String())
-			require.Contains(t, w.Body.String(), `"error_code":"VALIDATION_ERROR"`)
+			require.Contains(t, w.Body.String(), `"code":10001`)
 		})
 	}
 }

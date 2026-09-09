@@ -118,16 +118,22 @@ server:
   write_timeout: 300s        # 导入大文件需要长写超时
 
 postgres:
-  url: "postgres://${PG_USER:-activelist}:${PG_PASSWORD}@postgres:5432/activelist?sslmode=disable"
+  host: ${PG_HOST:-postgres}
+  port: 5432
+  user: ${PG_USER:-activelist}
+  password: ${PG_PASSWORD}
+  dbname: activelist
   max_open_conns: 10        # 多实例时按 副本数 × max_open_conns < PG max_connections 估算
 
 log:                          # 对齐 zhuzhao-utils logger 的 LogConfig（级别/目录/轮转）
   level: info
+  dir: logs
 
 business:
   page_size_default: 20
   page_size_max: 100
   import_batch_rows: 1000    # 全量替换导入同事务内的分批行数
+  import_max_bytes: 1073741824  # 导入 body 硬上限（§7 大文件配套，MaxBytesReader）
 
 security:                     # AK/SK 验签（基线 §9，M-A6 中间件；形态对齐 taskrunner）
   callers:                    # 预期调用方 AK→SK 密钥环（当前唯一调用方 zhuzhao）
@@ -138,6 +144,7 @@ tz: Asia/Shanghai             # 容器时区（基线 §9，compose environment 
 
 旧配置中的 mongo / redis / asynq / log_db 段全部移除（依赖已砍）。
 注：activelist 无出站调用 zhuzhao 的场景 → 只需验签密钥环（callers），无 self 签名身份。
+注：早期 §6 草图用 `postgres.url` 单字段，实现定为 utils postgres.Config **分字段形态**（DSN 由 utils 构造、密码经 URL 转义）——示例已与实现对齐（2026-09-08）。
 
 ## 7. 实现注意点
 

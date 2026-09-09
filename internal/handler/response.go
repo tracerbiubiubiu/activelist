@@ -1,43 +1,47 @@
-// §6.8 统一响应信封：{code(=HTTP状态), msg, data, detail{error_code,...}}。
-// 成功 data=业务数据；错误 data=null、detail 至少含 error_code。
+// 统一响应信封（standards §3.3）：utils response——
+// {code(业务码,0=成功), message, data, request_id}；创建类端点同 200（无 201/204）。
+// 业务错误 HTTP 状态表重试语义（4xx 不可重试 / 5xx 可重试）；响应体不带状态字段；
+// apperr.Detail（expected_version/type_name 等）渲染时折叠进 message——信封无 detail 字段。
 package handler
 
 import (
-	"net/http"
+	"fmt"
+	"sort"
 
 	"github.com/gin-gonic/gin"
+
+	"github.com/tracerbiubiubiu/zhuzhao-utils/response"
 
 	"github.com/tracerbiubiubiu/activelist/internal/apperr"
 )
 
-type envelope struct {
-	Code   int            `json:"code"`
-	Msg    string         `json:"msg"`
-	Data   any            `json:"data"`
-	Detail map[string]any `json:"detail,omitempty"`
-}
+// OK 成功（200；创建类端点同 200）。
+func OK(c *gin.Context, data any) { response.OK(c, data) }
 
-func render(c *gin.Context, httpStatus int, msg string, data any, detail map[string]any) {
-	c.JSON(httpStatus, envelope{Code: httpStatus, Msg: msg, Data: data, Detail: detail})
-}
+// BadRequest 参数解析失败（400 + 通用段 10001）。
+func BadRequest(c *gin.Context, msg string) { response.BadRequest(c, msg) }
 
-// OK 200 成功。
-func OK(c *gin.Context, data any) { render(c, http.StatusOK, "success", data, nil) }
-
-// Created 201 创建成功。
-func Created(c *gin.Context, data any) { render(c, http.StatusCreated, "success", data, nil) }
-
-// Fail 业务错误渲染。
+// Fail 业务错误渲染：code = 跨服务数值业务码（apperr.Error.Num）。
 func Fail(c *gin.Context, e *apperr.Error) {
-	detail := e.Detail
-	if detail == nil {
-		detail = map[string]any{}
-	}
-	detail["error_code"] = e.Code
-	render(c, e.HTTP, e.Msg, nil, detail)
+	response.Fail(c, e.HTTP, e.Num(), composeMsg(e))
 }
 
-// BadRequest 参数解析失败（400；JSON 非法/缺必填）。
-func BadRequest(c *gin.Context, msg string) {
-	render(c, http.StatusBadRequest, msg, nil, map[string]any{"error_code": apperr.CodeValidation})
+// composeMsg 人读消息 + Detail 上下文折叠（键名字典序，输出稳定）。
+func composeMsg(e *apperr.Error) string {
+	if len(e.Detail) == 0 {
+		return e.Msg
+	}
+	keys := make([]string, 0, len(e.Detail))
+	for k := range e.Detail {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	s := e.Msg + "（"
+	for i, k := range keys {
+		if i > 0 {
+			s += "；"
+		}
+		s += fmt.Sprintf("%s=%v", k, e.Detail[k])
+	}
+	return s + "）"
 }

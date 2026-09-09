@@ -7,7 +7,9 @@ package service
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
+	"net/http"
 	"strconv"
 	"time"
 
@@ -21,22 +23,26 @@ import (
 	"github.com/tracerbiubiubiu/activelist/internal/validation"
 )
 
-// DataService 数据 CRUD 服务（分页/导入分批参数来自 config business 段）。
+// DataService 数据 CRUD 服务（分页/导入分批与 body 上限参数来自 config business 段）。
 type DataService struct {
 	pool            *pgxpool.Pool
 	pageSizeDefault int
 	pageSizeMax     int
 	importBatchRows int
+	importMaxBytes  int64
 }
 
-func NewDataService(pool *pgxpool.Pool, pageSizeDefault, pageSizeMax, importBatchRows int) *DataService {
-	return &DataService{pool: pool, pageSizeDefault: pageSizeDefault, pageSizeMax: pageSizeMax, importBatchRows: importBatchRows}
+func NewDataService(pool *pgxpool.Pool, pageSizeDefault, pageSizeMax, importBatchRows int, importMaxBytes int64) *DataService {
+	return &DataService{pool: pool, pageSizeDefault: pageSizeDefault, pageSizeMax: pageSizeMax, importBatchRows: importBatchRows, importMaxBytes: importMaxBytes}
 }
 
 // PageLimits 分页钳制参数（handler 解析 query 时消费）。
 func (s *DataService) PageLimits() (defaultSize, maxSize int) {
 	return s.pageSizeDefault, s.pageSizeMax
 }
+
+// ImportMaxBytes 导入 body 上限（handler 挂 MaxBytesReader 时消费）。
+func (s *DataService) ImportMaxBytes() int64 { return s.importMaxBytes }
 
 // InsertInput 插入请求体（POST /api/v1/data/:typeName）。信封包装使 data 与
 // 保留列族在 JSON 形态上隔离，未来加元字段（如幂等键）不破契约。
@@ -75,7 +81,7 @@ func (s *DataService) Insert(ctx context.Context, typeName string, in InsertInpu
 		return nil, err
 	}
 	if err := validation.ValidateData(def.Fields, in.Data); err != nil {
-		return nil, s.mapDataValidationError(err, def, false)
+		return nil, s.mapDataValidationError(ctx, err, def, false)
 	}
 	raw, err := json.Marshal(in.Data)
 	if err != nil {
@@ -109,11 +115,18 @@ func (s *DataService) Get(ctx context.Context, typeName string, id int64) (*repo
 	return repository.GetDocByID(ctx, s.pool, def.TypeName, id)
 }
 
-// List 列表（仅 active 行；keyset 游标语义见 repository.Cursor）。
+// List 列表（仅 active 行；keyset 游标语义见 repository.Cursor）。limit 在本层
+// 再钳制一次——PG `LIMIT -1` 语义为不限行，直调方传非正值不得放大查询。
 func (s *DataService) List(ctx context.Context, typeName string, cur *repository.Cursor, pageSize int) ([]repository.Document, error) {
 	def, err := s.gateType(ctx, typeName, false)
 	if err != nil {
 		return nil, err
+	}
+	if pageSize < 1 {
+		pageSize = s.pageSizeDefault
+	}
+	if pageSize > s.pageSizeMax {
+		pageSize = s.pageSizeMax
 	}
 	return repository.ListDocs(ctx, s.pool, def.TypeName, cur, pageSize)
 }
@@ -153,7 +166,7 @@ func (s *DataService) Update(ctx context.Context, typeName string, id int64, in 
 
 	merged := mergeData(doc.Data, in.Data)
 	if err := validation.ValidateData(def.Fields, merged); err != nil {
-		return nil, s.mapDataValidationError(err, def, true)
+		return nil, s.mapDataValidationError(ctx, err, def, true)
 	}
 	raw, err := json.Marshal(merged)
 	if err != nil {
@@ -245,9 +258,9 @@ func (s *DataService) Restore(ctx context.Context, typeName string, id int64, op
 //     （错误信息含迁移指引，A3）；插入路径保持 VALIDATION_ERROR（新建数据本就该全量给齐）。
 //   - unknown_field：查字段史——曾存在于历史 schema = 已移除字段待清理 →
 //     FIELD_DEPRECATED；否则维持 VALIDATION_ERROR（真拼写错误）。
-func (s *DataService) mapDataValidationError(err error, def *meta.Definition, isUpdate bool) error {
-	ae, ok := err.(*apperr.Error)
-	if !ok {
+func (s *DataService) mapDataValidationError(ctx context.Context, err error, def *meta.Definition, isUpdate bool) error {
+	var ae *apperr.Error
+	if !errors.As(err, &ae) {
 		return err
 	}
 	field, _ := ae.Detail["field"].(string)
@@ -260,7 +273,7 @@ func (s *DataService) mapDataValidationError(err error, def *meta.Definition, is
 			"缺少必填字段: "+field+"——旧数据未含 schema 演进新增的必填字段，须补齐该字段后方可更新（或经导入全量重灌）").
 			WithDetail("field", field)
 	case "unknown_field":
-		existed, herr := meta.FieldExistedInHistory(context.Background(), s.pool, def.TypeName, field)
+		existed, herr := meta.FieldExistedInHistory(ctx, s.pool, def.TypeName, field)
 		if herr != nil {
 			return herr
 		}
@@ -362,6 +375,11 @@ func (s *DataService) Import(ctx context.Context, typeName string, r io.Reader, 
 		return repository.InsertImportBatch(ctx, tx, def.TypeName, batch)
 	})
 	if err != nil {
+		var mbe *http.MaxBytesError
+		if errors.As(err, &mbe) {
+			return nil, apperr.New(413, apperr.CodeValidation, "导入文件超过大小上限（import_max_bytes）").
+				WithDetail("limit_bytes", mbe.Limit)
+		}
 		return nil, err
 	}
 	maxID, err := repository.SetSequenceAfterImport(ctx, tx, def.TypeName)

@@ -7,7 +7,9 @@ package transfer
 import (
 	"bufio"
 	"encoding/json"
+	"errors"
 	"io"
+	"net/http"
 
 	"github.com/tracerbiubiubiu/activelist/internal/apperr"
 	"github.com/tracerbiubiubiu/activelist/internal/repository"
@@ -50,11 +52,15 @@ func EncodeDocs(w io.Writer, next func() (*repository.Document, error)) error {
 
 // DecodeBatches 流式解码 JSON 数组，按 batchSize 分批回调 handle（末批可不满）。
 // 任一批返回错误即中断（导入场景 = 事务回滚）。行数超大批次靠 More/Token 驱动，
-// 解码器内部仅持有当前批。
+// 解码器内部仅持有当前批。body 超 MaxBytesReader 上限时透传 *http.MaxBytesError
+// （调用方映射 413）——不得吞进 badFile 的 400 文案里丢语义。
 func DecodeBatches(r io.Reader, batchSize int, handle func([]repository.Document) error) error {
 	dec := json.NewDecoder(bufio.NewReaderSize(r, 1<<20))
 	tok, err := dec.Token()
 	if err != nil {
+		if isMaxBytes(err) {
+			return err
+		}
 		return badFile("解析失败: " + err.Error())
 	}
 	if d, ok := tok.(json.Delim); !ok || d != '[' {
@@ -65,6 +71,9 @@ func DecodeBatches(r io.Reader, batchSize int, handle func([]repository.Document
 		for len(batch) < batchSize && dec.More() {
 			var doc repository.Document
 			if err := dec.Decode(&doc); err != nil {
+				if isMaxBytes(err) {
+					return err
+				}
 				return badFile("行解析失败: " + err.Error())
 			}
 			batch = append(batch, doc)
@@ -74,10 +83,18 @@ func DecodeBatches(r io.Reader, batchSize int, handle func([]repository.Document
 		}
 	}
 	if tok, err = dec.Token(); err != nil {
+		if isMaxBytes(err) {
+			return err
+		}
 		return badFile("解析失败: " + err.Error())
 	}
 	if d, ok := tok.(json.Delim); !ok || d != ']' {
 		return badFile("数组未闭合")
 	}
 	return nil
+}
+
+func isMaxBytes(err error) bool {
+	var mbe *http.MaxBytesError
+	return errors.As(err, &mbe)
 }

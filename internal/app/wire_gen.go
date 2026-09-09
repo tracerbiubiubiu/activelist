@@ -24,7 +24,7 @@ func InitializeApp(cfg *config.Config) (*App, func(), error) {
 		return nil, nil, err
 	}
 	types := service.NewTypeService(pool)
-	data := service.NewDataService(pool, cfg.Business.PageSizeDefault, cfg.Business.PageSizeMax, cfg.Business.ImportBatchRows)
+	data := service.NewDataService(pool, cfg.Business.PageSizeDefault, cfg.Business.PageSizeMax, cfg.Business.ImportBatchRows, cfg.Business.ImportMaxBytes)
 	engine := provideEngine(types, data, provideReadyz(pool))
 	return NewApp(cfg, logger, engine), func() { cleanupPool() }, nil
 }

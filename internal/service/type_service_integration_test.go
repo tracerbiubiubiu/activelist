@@ -202,32 +202,32 @@ func TestA1_HTTPEnvelope(t *testing.T) {
 
 	w := httptest.NewRecorder()
 	r.ServeHTTP(w, httptest.NewRequest(http.MethodPost, "/api/v1/admin/types", strings.NewReader(body)))
-	require.Equal(t, http.StatusCreated, w.Code)
-	require.Contains(t, w.Body.String(), `"code":201`)
+	require.Equal(t, http.StatusOK, w.Code)
+	require.Contains(t, w.Body.String(), `"code":0`)
 	require.Contains(t, w.Body.String(), `"type_name":"e2e_kind"`)
 
 	w = httptest.NewRecorder()
 	r.ServeHTTP(w, httptest.NewRequest(http.MethodPost, "/api/v1/admin/types", strings.NewReader(body)))
 	require.Equal(t, http.StatusConflict, w.Code)
-	require.Contains(t, w.Body.String(), `"error_code":"TYPE_ALREADY_EXISTS"`)
+	require.Contains(t, w.Body.String(), `"code":100003`)
 
 	w = httptest.NewRecorder()
 	r.ServeHTTP(w, httptest.NewRequest(http.MethodPost, "/api/v1/admin/types",
 		strings.NewReader(`{"type_name":"Bad","fields":[{"name":"x","type":"int"}]}`)))
 	require.Equal(t, http.StatusUnprocessableEntity, w.Code)
-	require.Contains(t, w.Body.String(), `"error_code":"VALIDATION_ERROR"`)
+	require.Contains(t, w.Body.String(), `"code":100000`)
 
 	w = httptest.NewRecorder()
 	r.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/api/v1/admin/types/e2e_kind", nil))
 	require.Equal(t, http.StatusOK, w.Code)
 	var env struct {
-		Code int             `json:"code"`
-		Msg  string          `json:"msg"`
-		Data json.RawMessage `json:"data"`
+		Code    int             `json:"code"`
+		Message string          `json:"message"`
+		Data    json.RawMessage `json:"data"`
 	}
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &env))
-	require.Equal(t, 200, env.Code)
-	require.Equal(t, "success", env.Msg)
+	require.Equal(t, 0, env.Code)
+	require.Equal(t, "success", env.Message)
 
 	w = httptest.NewRecorder()
 	r.ServeHTTP(w, httptest.NewRequest(http.MethodPost, "/api/v1/admin/types", strings.NewReader(`{bad`)))

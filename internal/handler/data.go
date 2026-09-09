@@ -13,7 +13,7 @@ import (
 	"github.com/tracerbiubiubiu/activelist/internal/service"
 )
 
-// insertData 插入数据（201；类型不存在 404 / 已废弃 409 / 校验失败 422）。
+// insertData 插入数据（200；类型不存在 404 / 已废弃 409 / 校验失败 422）。
 func (d *Deps) insertData(c *gin.Context) {
 	var in service.InsertInput
 	if err := c.ShouldBindJSON(&in); err != nil || in.Data == nil {
@@ -25,7 +25,7 @@ func (d *Deps) insertData(c *gin.Context) {
 		Fail(c, asAppErr(err))
 		return
 	}
-	Created(c, doc)
+	OK(c, doc)
 }
 
 // getData 单查（软删行可见，status 标注现态）。
@@ -170,18 +170,29 @@ func parseCursor(c *gin.Context) (*repository.Cursor, bool) {
 }
 
 // exportData 全量导出（含软删行）。文件本体 = 裸 JSON 数组（实现拍板：信封包
-// 文件体破坏流式与导出/导入对称性）——本端点不走 §6.8 信封；流中途错误只能在
-// 响应头之后截断（前置 gate 错误仍走信封错误响应）。
+// 文件体破坏流式与导出/导入对称性）——本端点不走 §6.8 信封。错误按响应是否
+// 已开始分流：前置 gate 错误（类型不存在等）响应未写，正常转信封错误响应；
+// 流中途错误响应头已发、无法改状态码——只能截断 body（c.Errors 由 M-A6
+// 访问日志统一出口消费），绝不再追加信封（否则客户端收到 200 + 数据 + 信封
+// 的损坏流）。
 func (d *Deps) exportData(c *gin.Context) {
 	c.Header("Content-Type", "application/json")
-	c.Status(http.StatusOK)
-	if err := d.Data.Export(c.Request.Context(), c.Param("typeName"), c.Writer); err != nil {
-		Fail(c, asAppErr(err))
+	err := d.Data.Export(c.Request.Context(), c.Param("typeName"), c.Writer)
+	if err == nil {
+		return
 	}
+	if !c.Writer.Written() {
+		Fail(c, asAppErr(err))
+		return
+	}
+	_ = c.Error(err)
 }
 
-// importData 全量替换导入（body = 导出同构的 JSON 数组，流式分批处理）。
+// importData 全量替换导入（body = 导出同构的 JSON 数组，流式分批处理；
+// MaxBytesReader 硬上限防超大 body 打满磁盘/WAL——§7「body 大小上限与
+// write_timeout 配套」的闭环）。
 func (d *Deps) importData(c *gin.Context) {
+	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, d.Data.ImportMaxBytes())
 	res, err := d.Data.Import(c.Request.Context(), c.Param("typeName"), c.Request.Body, operatorFallback)
 	if err != nil {
 		Fail(c, asAppErr(err))

@@ -25,7 +25,7 @@ import (
 )
 
 func newDataSvc(pool *pgxpool.Pool) *service.DataService {
-	return service.NewDataService(pool, 20, 100, 500)
+	return service.NewDataService(pool, 20, 100, 500, 1<<30)
 }
 
 func insertDoc(t *testing.T, dsvc *service.DataService, typeName string, qty int, name string) *repository.Document {
@@ -300,30 +300,30 @@ func TestA1_DeprecatedTypeRejectsWrite(t *testing.T) {
 func TestA3_HTTPEnvelopeData(t *testing.T) {
 	pool, tsvc := setupPG(t)
 	// 故意用小 max（3）验证 page_size 钳制回显
-	dsvc := service.NewDataService(pool, 2, 3, 500)
+	dsvc := service.NewDataService(pool, 2, 3, 500, 1<<30)
 	gin.SetMode(gin.TestMode)
 	r := handler.New(handler.Deps{Types: tsvc, Data: dsvc})
 
 	w := httptest.NewRecorder()
 	regBody := `{"type_name":"e2e_items","fields":[{"name":"name","type":"string","required":true},{"name":"qty","type":"int"}]}`
 	r.ServeHTTP(w, httptest.NewRequest(http.MethodPost, "/api/v1/admin/types", strings.NewReader(regBody)))
-	require.Equal(t, http.StatusCreated, w.Code)
+	require.Equal(t, http.StatusOK, w.Code)
 
-	// 插入 201 + 信封
+	// 插入 200 + 信封
 	w = httptest.NewRecorder()
 	r.ServeHTTP(w, httptest.NewRequest(http.MethodPost, "/api/v1/data/e2e_items",
 		strings.NewReader(`{"data":{"name":"n1","qty":1}}`)))
-	require.Equal(t, http.StatusCreated, w.Code)
+	require.Equal(t, http.StatusOK, w.Code)
 	var env struct {
 		Code int `json:"code"`
 		Data struct {
-			ID      int64  `json:"id"`
+			ID      int64  `json:"id,string"`
 			Version int64  `json:"version"`
 			Status  string `json:"status"`
 		} `json:"data"`
 	}
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &env))
-	require.Equal(t, 201, env.Code)
+	require.Equal(t, 0, env.Code)
 	require.EqualValues(t, 1, env.Data.Version)
 	require.Equal(t, "active", env.Data.Status)
 	id := env.Data.ID
@@ -334,12 +334,12 @@ func TestA3_HTTPEnvelopeData(t *testing.T) {
 		strings.NewReader(`{"data":42}`)))
 	require.Equal(t, http.StatusBadRequest, w.Code)
 
-	// 游标成对性 → 400
+	// 游标成对性 → 400（handler 层 BadRequest，通用段 10001）
 	w = httptest.NewRecorder()
 	r.ServeHTTP(w, httptest.NewRequest(http.MethodGet,
 		"/api/v1/data/e2e_items?after_created_at=2026-09-08T00:00:00Z", nil))
 	require.Equal(t, http.StatusBadRequest, w.Code)
-	require.Contains(t, w.Body.String(), `"error_code":"VALIDATION_ERROR"`)
+	require.Contains(t, w.Body.String(), `"code":10001`)
 
 	// page_size 超限钳制回显（max=3）
 	w = httptest.NewRecorder()
@@ -361,14 +361,14 @@ func TestA3_HTTPEnvelopeData(t *testing.T) {
 
 	// 乐观锁 409 经信封透出
 	w = httptest.NewRecorder()
-	r.ServeHTTP(w, httptest.NewRequest(http.MethodPut, fmt.Sprintf("/api/v1/data/e2e_items/%d", id),
+	r.ServeHTTP(w, httptest.NewRequest(http.MethodPost, fmt.Sprintf("/api/v1/data/e2e_items/%d/update", id),
 		strings.NewReader(`{"data":{"qty":9},"version":77}`)))
 	require.Equal(t, http.StatusConflict, w.Code)
-	require.Contains(t, w.Body.String(), `"error_code":"CONFLICT"`)
+	require.Contains(t, w.Body.String(), `"code":100008`)
 
 	// 软删 → 单查带 deleted → 恢复 → active
 	w = httptest.NewRecorder()
-	r.ServeHTTP(w, httptest.NewRequest(http.MethodDelete, fmt.Sprintf("/api/v1/data/e2e_items/%d", id), nil))
+	r.ServeHTTP(w, httptest.NewRequest(http.MethodPost, fmt.Sprintf("/api/v1/data/e2e_items/%d/delete", id), nil))
 	require.Equal(t, http.StatusOK, w.Code)
 	require.Contains(t, w.Body.String(), `"status":"deleted"`)
 
@@ -386,5 +386,5 @@ func TestA3_HTTPEnvelopeData(t *testing.T) {
 	w = httptest.NewRecorder()
 	r.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/api/v1/data/ghost_type/1", nil))
 	require.Equal(t, http.StatusNotFound, w.Code)
-	require.Contains(t, w.Body.String(), `"error_code":"TYPE_NOT_FOUND"`)
+	require.Contains(t, w.Body.String(), `"code":100002`)
 }

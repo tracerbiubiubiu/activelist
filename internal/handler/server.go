@@ -62,8 +62,8 @@ func New(d Deps) *gin.Engine {
 			data.POST("/:typeName", d.insertData)
 			data.GET("/:typeName", d.listData)
 			data.GET("/:typeName/:id", d.getData)
-			data.PUT("/:typeName/:id", d.updateData)
-			data.DELETE("/:typeName/:id", d.deleteData)
+			data.POST("/:typeName/:id/update", d.updateData)
+			data.POST("/:typeName/:id/delete", d.deleteData)
 			data.POST("/:typeName/:id/restore", d.restoreData)
 
 			// 导入导出（M-A5；A5）。export=静态段与 :id 参数同级（gin 静态优先）
@@ -74,7 +74,7 @@ func New(d Deps) *gin.Engine {
 	return r
 }
 
-// registerType 注册类型（201；重复 409；非法 422——A1）。
+// registerType 注册类型（200；重复 409；非法 422——A1）。
 func (d *Deps) registerType(c *gin.Context) {
 	var in service.RegisterInput
 	if err := c.ShouldBindJSON(&in); err != nil {
@@ -86,7 +86,7 @@ func (d *Deps) registerType(c *gin.Context) {
 		Fail(c, asAppErr(err))
 		return
 	}
-	Created(c, def)
+	OK(c, def)
 }
 
 // listTypes 类型列表。

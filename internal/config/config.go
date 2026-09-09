@@ -45,12 +45,15 @@ type Log struct {
 	Dir   string `mapstructure:"dir"`
 }
 
-// Business 业务参数（§6；M-A3 分页 / M-A5 导入分批消费，当前仅承载）。
+// Business 业务参数（§6；M-A3 分页 / M-A5 导入分批与 body 上限消费）。
 type Business struct {
 	PageSizeDefault int `mapstructure:"page_size_default"`
 	PageSizeMax     int `mapstructure:"page_size_max"`
 	// ImportBatchRows 全量替换导入同事务内的分批行数（百万行级控内存/WAL）。
 	ImportBatchRows int `mapstructure:"import_batch_rows"`
+	// ImportMaxBytes 导入请求 body 硬上限（§7 大文件配套——MaxBytesReader 防
+	// 超大 body 占满磁盘/WAL；默认 1GiB ≈ 百万行 × 1KB）。
+	ImportMaxBytes int64 `mapstructure:"import_max_bytes"`
 }
 
 type Security struct {
@@ -118,6 +121,7 @@ func Load(path string) (*Config, error) {
 	viperBindInt(v, "business.page_size_default", "ACTIVELIST_BUSINESS_PAGE_SIZE_DEFAULT", 20)
 	viperBindInt(v, "business.page_size_max", "ACTIVELIST_BUSINESS_PAGE_SIZE_MAX", 100)
 	viperBindInt(v, "business.import_batch_rows", "ACTIVELIST_BUSINESS_IMPORT_BATCH_ROWS", 1000)
+	viperBindInt64(v, "business.import_max_bytes", "ACTIVELIST_BUSINESS_IMPORT_MAX_BYTES", 1<<30)
 	v.BindEnv("security.callers.zhuzhao", "ACTIVELIST_CALLER_ZHUZHAO_SK")
 
 	var cfg Config
@@ -131,7 +135,7 @@ func Load(path string) (*Config, error) {
 		return nil, fmt.Errorf("postgres.host/dbname 不能为空")
 	}
 	if cfg.Business.PageSizeDefault <= 0 || cfg.Business.PageSizeMax < cfg.Business.PageSizeDefault ||
-		cfg.Business.ImportBatchRows <= 0 {
+		cfg.Business.ImportBatchRows <= 0 || cfg.Business.ImportMaxBytes <= 0 {
 		return nil, fmt.Errorf("business 参数非法（须为正且 page_size_max ≥ page_size_default）")
 	}
 	if cfg.Security.Callers == nil {
@@ -145,6 +149,14 @@ func Load(path string) (*Config, error) {
 
 // viperBindInt 整型 env 绑定（GetString 判空对 "0" 会误设默认，单独处理）。
 func viperBindInt(v *viper.Viper, key, env string, def int) {
+	v.BindEnv(key, env)
+	if !v.IsSet(key) {
+		v.SetDefault(key, def)
+	}
+}
+
+// viperBindInt64 同 viperBindInt，承载超 int 精度语义的字节数配置。
+func viperBindInt64(v *viper.Viper, key, env string, def int64) {
 	v.BindEnv(key, env)
 	if !v.IsSet(key) {
 		v.SetDefault(key, def)

@@ -36,7 +36,7 @@ type dbtx interface {
 // Document 数据行完整文档。写接口统一返回变更后完整文档（§4——审计契约素材，
 // zhuzhao 侧凭响应即可记审计，无需二次查询）。
 type Document struct {
-	ID        int64          `json:"id"`
+	ID        int64          `json:"id,string"`
 	Version   int64          `json:"version"`
 	Status    string         `json:"status"` // active | deleted（软删）
 	Data      map[string]any `json:"data"`

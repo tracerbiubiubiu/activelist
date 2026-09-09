@@ -148,11 +148,11 @@ func TestA5_ImportValidationRollback(t *testing.T) {
 		name string
 		file string
 	}{
-		{"缺必填字段", `[{"id":10,"data":{"qty":1}}]`},
-		{"文件内重复 id", `[{"id":10,"data":{"name":"x"}},{"id":10,"data":{"name":"y"}}]`},
-		{"非法 status", `[{"id":10,"status":"gone","data":{"name":"x"}}]`},
+		{"缺必填字段", `[{"id":"10","data":{"qty":1}}]`},
+		{"文件内重复 id", `[{"id":"10","data":{"name":"x"}},{"id":"10","data":{"name":"y"}}]`},
+		{"非法 status", `[{"id":"10","status":"gone","data":{"name":"x"}}]`},
 		{"缺 id", `[{"data":{"name":"x"}}]`},
-		{"未知字段", `[{"id":10,"data":{"name":"x","typo":1}}]`},
+		{"未知字段", `[{"id":"10","data":{"name":"x","typo":1}}]`},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -228,7 +228,7 @@ func TestA5_ImportEmptyAndDeprecated(t *testing.T) {
 	// 废弃类型拒导入
 	_, err = tsvc.Deprecate(ctx, "emp_item", "system")
 	require.NoError(t, err)
-	_, err = dsvc.Import(ctx, "emp_item", strings.NewReader(`[{"id":1,"data":{"name":"x"}}]`), "importer")
+	_, err = dsvc.Import(ctx, "emp_item", strings.NewReader(`[{"id":"1","data":{"name":"x"}}]`), "importer")
 	require.Equal(t, 409, mustAE(t, err).HTTP)
 	require.Equal(t, "TYPE_DEPRECATED", mustAE(t, err).Code)
 }
@@ -243,11 +243,11 @@ func TestA5_HTTPExportImport(t *testing.T) {
 	w := httptest.NewRecorder()
 	r.ServeHTTP(w, httptest.NewRequest(http.MethodPost, "/api/v1/admin/types",
 		strings.NewReader(`{"type_name":"hx_item","fields":[{"name":"name","type":"string","required":true}]}`)))
-	require.Equal(t, http.StatusCreated, w.Code)
+	require.Equal(t, http.StatusOK, w.Code)
 	w = httptest.NewRecorder()
 	r.ServeHTTP(w, httptest.NewRequest(http.MethodPost, "/api/v1/data/hx_item",
 		strings.NewReader(`{"data":{"name":"n1"}}`)))
-	require.Equal(t, http.StatusCreated, w.Code)
+	require.Equal(t, http.StatusOK, w.Code)
 
 	// 导出 = 裸数组
 	w = httptest.NewRecorder()
@@ -297,8 +297,8 @@ func TestA5_ConcurrentImportsSerialized(t *testing.T) {
 
 	_, err := tsvc.Register(ctx, service.RegisterInput{TypeName: "par_item", Fields: sampleFields()}, "system")
 	require.NoError(t, err)
-	fileA := []byte(`[{"id":1,"data":{"name":"A"}}]`)
-	fileB := []byte(`[{"id":2,"data":{"name":"B"}}]`)
+	fileA := []byte(`[{"id":"1","data":{"name":"A"}}]`)
+	fileB := []byte(`[{"id":"2","data":{"name":"B"}}]`)
 
 	var wg sync.WaitGroup
 	errs := make(chan error, 2)
