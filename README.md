@@ -39,8 +39,9 @@
 # 0. 预建跨 compose 共享网络（zhuzhao 网关容器须加入同一网络）
 docker network create zhuzhao_to_activelist
 
-# 1. 注入必需密钥（fail-closed：缺失拒启）
-export ACTIVELIST_CALLER_ZHUZHAO_SK=<与 zhuzhao 网关侧 GATEWAY_SK 同值>
+# 1. 注入密钥（SK 可省略：compose 缺省 dev-gateway-sk = zhuzhao dev 同值，仅限本地；
+#    生产务必注入真实值。应用对空 SK fail-closed 拒启）
+# export ACTIVELIST_CALLER_ZHUZHAO_SK=<与 zhuzhao 网关侧 GATEWAY_SK 同值>
 export ACTIVELIST_PG_PASSWORD=<PG 口令>
 
 # 2. 构建镜像 + 起全栈（PG + apiserver×2 多副本 + 每日备份）
@@ -62,5 +63,5 @@ docker compose -f deploy/compose.yaml exec apiserver \
 
 - 文档就绪：设计收敛定稿 + **实现计划就绪**（[implementation-plan.md](./docs/implementation-plan.md)，M-A 验收标准见其 §2）
 - 代码进度（2026-09-09）：**M-A1–M-A5 已交付**（骨架 / 类型注册 / CRUD / Schema 演进 / 导入导出），**M-A6 代码与部署件完成**（AK/SK 验签 + X-Operator + 统一访问日志 + Dockerfile/部署态 compose/备份；实测随部署批）——详见 implementation-plan 里程碑表
-- 启动前置 ✅ **已就绪**：zhuzhao-utils **v0.2.0 直引无 replace**（activelist 硬依赖 `logger` + `postgres` + `response` + `aksk`）；**部署 fail-closed**：`ACTIVELIST_CALLER_ZHUZHAO_SK` 缺失拒启
+- 启动前置 ✅ **已就绪**：zhuzhao-utils **v0.2.0 直引无 replace**（activelist 硬依赖 `logger` + `postgres` + `response` + `aksk`）；**部署 fail-closed**：应用对空 SK 拒启（config 层校验，覆盖 `${VAR:-}` 展开为空的形态）；deploy/compose 带 dev-gateway-sk 缺省便于本地起栈，生产务必 env 覆盖
 - 排期归属：zhuzhao Phase 3 主线 **M-A（activelist 独立实现）**，与其他里程碑无链式依赖（2026-09-02 design-decisions §23.2，详见 ADR-003「排期与集成拆分同步」节）

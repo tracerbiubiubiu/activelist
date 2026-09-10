@@ -5,9 +5,11 @@
 # zhuzhao 网关容器须加入同一网络）；PG 仅内网。apiserver 无状态，deploy.replicas=2 多副本
 #（迁移自带会话级 advisory lock，并发启动安全——A7）。
 #
-# 必需环境变量（.env 或 export，缺失拒启/拒建）：
-#   ACTIVELIST_CALLER_ZHUZHAO_SK  zhuzhao 网关出站签名 SK（与网关侧 GATEWAY_SK 同值）
-#   ACTIVELIST_PG_PASSWORD        PG 口令
+# 环境变量（.env 或 export）：
+#   ACTIVELIST_CALLER_ZHUZHAO_SK  zhuzhao 网关出站签名 SK（与网关侧 GATEWAY_SK 同值）。
+#                                 compose 缺省 dev-gateway-sk（=zhuzhao dev 同值）仅供本地
+#                                 起栈，生产务必 env 覆盖；应用对空 SK fail-closed 拒启
+#   ACTIVELIST_PG_PASSWORD        PG 口令（必需，缺失拒建）
 #
 # 备份策略：每日 02:00 pg_dump（pgbackup 服务，保留 14 份）+ WAL 归档（archive_timeout
 # 5 分钟）；恢复步骤见 deploy/backup/README.md。
@@ -44,7 +46,7 @@ services:
     build: ..
     image: activelist-apiserver:latest
     environment:
-      ACTIVELIST_CALLER_ZHUZHAO_SK: ${ACTIVELIST_CALLER_ZHUZHAO_SK:?需注入 ACTIVELIST_CALLER_ZHUZHAO_SK}
+      ACTIVELIST_CALLER_ZHUZHAO_SK: ${ACTIVELIST_CALLER_ZHUZHAO_SK:-dev-gateway-sk} # 本地演示默认与 zhuzhao dev-gateway-sk 同值；生产务必经 env 覆盖
       ACTIVELIST_PG_HOST: postgres
       ACTIVELIST_PG_PORT: "5432"
       ACTIVELIST_PG_PASSWORD: ${ACTIVELIST_PG_PASSWORD:?需注入 ACTIVELIST_PG_PASSWORD}
