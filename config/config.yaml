@@ -25,7 +25,8 @@ business:
   import_max_bytes: 1073741824  # 导入 body 硬上限 1GiB（MaxBytesReader，防超大 body 占满磁盘/WAL）
 
 # AK/SK 验签密钥环（基线 §9；预期唯一调用方 zhuzhao）。验签中间件已落地（M-A6）——
-# 密钥环空拒绝启动（fail-closed，对齐 taskrunner）；SK 经 env 注入，不入库不入 git。
+# 密钥环空或含空 SK 条目均拒绝启动（fail-closed，对齐 taskrunner）；SK 经 env 注入，
+# 不入库不入 git（env 未注入时下面的 ${VAR:-} 展开为空串 → 启动即拒）。
 security:
   callers:
     zhuzhao: ${ACTIVELIST_CALLER_ZHUZHAO_SK:-}

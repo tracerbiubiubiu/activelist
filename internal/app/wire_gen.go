@@ -13,6 +13,7 @@ package app
 
 import (
 	"errors"
+	"fmt"
 
 	"github.com/tracerbiubiubiu/activelist/internal/config"
 	"github.com/tracerbiubiubiu/activelist/internal/service"
@@ -20,10 +21,17 @@ import (
 
 // InitializeApp 依赖装配入口。
 func InitializeApp(cfg *config.Config) (*App, func(), error) {
-	// M-A6 fail-closed（启动级）：空验签密钥环拒绝启动（对齐 taskrunner C2；
-	// handler 层空环为请求级 401——双保险的启动半边）。
+	// M-A6 fail-closed（启动级）：空验签密钥环或含空 SK 条目均拒绝启动（对齐
+	// taskrunner C2，验收 A8；handler 层空环为请求级 401——双保险的启动半边）。
+	// 注意两形态都必须在此拦：config.yaml 的 ${VAR:-} 在 env 未注入时展开为空值，
+	// viper/mapstructure 会把该条目整个丢掉（环变空 map），config 层不可见。
 	if len(cfg.Security.Callers) == 0 {
 		return nil, nil, errors.New("security.callers 为空——拒绝启动（M-A6 fail-closed；配置 ACTIVELIST_CALLER_ZHUZHAO_SK）")
+	}
+	for ak, sk := range cfg.Security.Callers {
+		if sk == "" {
+			return nil, nil, fmt.Errorf("security.callers.%s 的 SK 为空——拒绝启动（fail-closed；配置 ACTIVELIST_CALLER_ZHUZHAO_SK）", ak)
+		}
 	}
 	logger := provideLogger(cfg)
 	pool, cleanupPool, err := providePool(cfg)

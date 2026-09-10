@@ -58,7 +58,8 @@ type Business struct {
 
 type Security struct {
 	// Callers 验签密钥环（AK→SK，当前唯一调用方 zhuzhao）。验签中间件已随 M-A6
-	// 落地：空密钥环拒绝启动（fail-closed，对齐 taskrunner C2，app.InitializeApp）。
+	// 落地：空密钥环与空 SK 条目均在启动时拒绝（fail-closed，app.InitializeApp，
+	// 对齐 taskrunner C2；config 层不校验——${VAR:-} 空值条目会被 viper 丢弃）。
 	Callers map[string]string `mapstructure:"callers"`
 }
 

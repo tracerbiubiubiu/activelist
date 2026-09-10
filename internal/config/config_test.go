@@ -74,6 +74,18 @@ func TestLoad_Invalid(t *testing.T) {
 		_, err := Load(path)
 		require.Error(t, err)
 	})
+	t.Run("空 SK 条目在 Load 层不可见（viper 丢空值条目，启动层拦——见 app wire_test）", func(t *testing.T) {
+		t.Setenv("ACTIVELIST_CALLER_ZHUZHAO_SK", "")
+		path := filepath.Join(t.TempDir(), "config.yaml")
+		require.NoError(t, os.WriteFile(path, []byte(`
+security:
+  callers:
+    zhuzhao: ${ACTIVELIST_CALLER_ZHUZHAO_SK:-}
+`), 0o600))
+		cfg, err := Load(path)
+		require.NoError(t, err)
+		require.Empty(t, cfg.Security.Callers, "${VAR:-} 空值条目被 viper 丢弃 → 环为空，由 InitializeApp 拒启")
+	})
 }
 
 func TestPostgresDSN(t *testing.T) {
