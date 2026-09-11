@@ -19,6 +19,9 @@ type Server struct {
 	ReadTimeout time.Duration `mapstructure:"read_timeout"`
 	// WriteTimeout 需容纳导入大文件全程（M-A5；默认 300s）
 	WriteTimeout time.Duration `mapstructure:"write_timeout"`
+	// ReadHeaderTimeout 防慢速头攻击（slowloris）；IdleTimeout 回收空闲keep-alive连接
+	ReadHeaderTimeout time.Duration `mapstructure:"read_header_timeout"`
+	IdleTimeout       time.Duration `mapstructure:"idle_timeout"`
 }
 
 type Postgres struct {
@@ -28,13 +31,17 @@ type Postgres struct {
 	Password     string `mapstructure:"password"`
 	DBName       string `mapstructure:"dbname"`
 	MaxOpenConns int    `mapstructure:"max_open_conns"`
+	SSLMode      string `mapstructure:"sslmode"` // 生产建议 require；默认 disable（内网）
+	// StatementTimeout 单语句兜底超时（防失控查询占满连接池）；0 = 不限制
+	StatementTimeout time.Duration `mapstructure:"statement_timeout"`
 }
 
 // DSN 连接串（utils postgres.Config 构造——密码经 url 转义，env 注入字符不受控）。
 func (p Postgres) DSN() string {
 	uc := utilspostgres.Config{
 		Host: p.Host, Port: p.Port, User: p.User, Password: p.Password,
-		DBName: p.DBName, SSLMode: "disable",
+		DBName: p.DBName, SSLMode: p.SSLMode,
+		StatementTimeout: p.StatementTimeout,
 	}
 	uc.ApplyDefaults()
 	return uc.DSN()
@@ -43,6 +50,10 @@ func (p Postgres) DSN() string {
 type Log struct {
 	Level string `mapstructure:"level"`
 	Dir   string `mapstructure:"dir"`
+	// 轮转三键（ADR-003 保留建议 30–90 天；访问日志含工号/IP，不得无界累积）
+	MaxSizeMB  int `mapstructure:"max_size_mb"`
+	MaxBackups int `mapstructure:"max_backups"`
+	MaxAgeDays int `mapstructure:"max_age_days"`
 }
 
 // Business 业务参数（§6；M-A3 分页 / M-A5 导入分批与 body 上限消费）。
@@ -110,14 +121,21 @@ func Load(path string) (*Config, error) {
 	}
 	bind("server.port", "ACTIVELIST_HTTP_PORT", 8080)
 	bind("server.read_timeout", "ACTIVELIST_HTTP_READ_TIMEOUT", "30s")
+	bind("server.read_header_timeout", "ACTIVELIST_HTTP_READ_HEADER_TIMEOUT", "10s")
+	bind("server.idle_timeout", "ACTIVELIST_HTTP_IDLE_TIMEOUT", "120s")
 	bind("server.write_timeout", "ACTIVELIST_HTTP_WRITE_TIMEOUT", "300s")
 	bind("postgres.host", "ACTIVELIST_PG_HOST", "127.0.0.1")
+	bind("postgres.sslmode", "ACTIVELIST_PG_SSLMODE", "disable")
+	bind("postgres.statement_timeout", "ACTIVELIST_PG_STATEMENT_TIMEOUT", "0s")
 	viperBindInt(v, "postgres.port", "ACTIVELIST_PG_PORT", 5432)
 	bind("postgres.user", "ACTIVELIST_PG_USER", "activelist")
 	bind("postgres.password", "ACTIVELIST_PG_PASSWORD", "activelist")
 	bind("postgres.dbname", "ACTIVELIST_PG_DBNAME", "activelist")
 	viperBindInt(v, "postgres.max_open_conns", "ACTIVELIST_PG_MAX_OPEN_CONNS", 10)
 	bind("log.level", "ACTIVELIST_LOG_LEVEL", "info")
+	bind("log.max_size_mb", "ACTIVELIST_LOG_MAX_SIZE_MB", 100)
+	bind("log.max_backups", "ACTIVELIST_LOG_MAX_BACKUPS", 14)
+	bind("log.max_age_days", "ACTIVELIST_LOG_MAX_AGE_DAYS", 30)
 	bind("log.dir", "ACTIVELIST_LOG_DIR", "logs")
 	viperBindInt(v, "business.page_size_default", "ACTIVELIST_BUSINESS_PAGE_SIZE_DEFAULT", 20)
 	viperBindInt(v, "business.page_size_max", "ACTIVELIST_BUSINESS_PAGE_SIZE_MAX", 100)

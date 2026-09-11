@@ -5,6 +5,7 @@ package repository
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/jackc/pgx/v5"
 
@@ -25,12 +26,12 @@ func CreateTableIfNotExists(ctx context.Context, tx pgx.Tx, typeName string) err
 		updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 	)`
 	if _, err := tx.Exec(ctx, create); err != nil {
-		return apperr.New(500, apperr.CodeInternal, "创建类型数据表失败")
+		return apperr.New(500, apperr.CodeInternal, fmt.Sprintf("创建类型数据表失败: %v", err))
 	}
 	index := `CREATE INDEX IF NOT EXISTS "idx_` + typeName + `_created"
 		ON "` + typeName + `" (created_at DESC, id DESC)`
 	if _, err := tx.Exec(ctx, index); err != nil {
-		return apperr.New(500, apperr.CodeInternal, "创建类型数据表索引失败")
+		return apperr.New(500, apperr.CodeInternal, fmt.Sprintf("创建类型数据表索引失败: %v", err))
 	}
 	return nil
 }

@@ -128,7 +128,7 @@ col_<type>(
 | # | 能力需求 | zhuzhao 侧载体 | 状态 | 对 activelist 的阻塞关系 |
 |---|---------|---------------|------|------------------------|
 | D1 | 共享 utils：`logger` / `postgres`（硬依赖），`errcode` / `response` / `jsonutil` / `validate` / `crypto`（按需） | zhuzhao-utils 独立项目 | ✅ **迁移完成，已验证（2026-09-03）** | **已解除——M-A1 可开工** |
-| D2 | 反向代理 + header 透传（E13：`app/service/proxy/` + `SetForwardHeaders` + Restrict 资源 `activelist` + accesslog 跳过 body） | zhuzhao E13 | 蓝图 🚦（未开始） | **不阻塞开发；阻塞联调与上线**（activelist 用户侧零权限，无网关不能对外暴露） |
+| D2 | 反向代理 + header 透传（E13：`app/service/proxy/` + `SetForwardHeaders` + Restrict 资源 `activelist` + accesslog 跳过 body） | zhuzhao E13 | ✅ 已实现（zhuzhao 批次 B 2026-09-09）/ 待联调 | **不阻塞开发；阻塞联调与上线**（activelist 用户侧零权限，无网关不能对外暴露） |
 | D3 | 业务审计记录 | zhuzhao client 封装层 + `activelist_audit_log` 表 | ✅ **已拍板**（2026-09-03，机制见下方专节：双侧记录 + X-Request-ID 关联；脱敏暂不做＝风险接受） | 已解除阻塞（zhuzhao 侧实现项：client 层 + 审计表；activelist 侧义务已定稿） |
 | D4 | 事件发布（zhuzhao 业务操作点显式发布；工单非首数据源，接入契约由 activelist 侧定义） | zhuzhao M-E taskrunner（平台已就绪：M1/M2 完成 2026-09-03，见 taskrunner 仓库） | ⏳ 平台就绪；activelist 事件接入待其成型 | **无依赖**（activelist 不感知事件） |
 | D5 | 网络隔离（双 network，仅 zhuzhao 容器可达 apiserver 8080） | 双方部署约定 | activelist 自理 docker-compose | 部署期事项（M-A6） |

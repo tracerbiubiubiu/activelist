@@ -233,3 +233,50 @@ func TestA1_HTTPEnvelope(t *testing.T) {
 	r.ServeHTTP(w, httptest.NewRequest(http.MethodPost, "/api/v1/admin/types", strings.NewReader(`{bad`)))
 	require.Equal(t, http.StatusBadRequest, w.Code)
 }
+
+// C7 回归（Deprecate×Evolve 交错）：Deprecate 的 GetByName 快照读发生在行锁等待
+// 之前——并发演进提交后，历史行若用旧快照会记录演进前 schema（审计失真）。
+// 修复 = moved=true 后（已持有行锁）锁内重读 fields 再写历史。
+func TestDeprecateDuringEvolve_RecordsLockTimeSchema(t *testing.T) {
+	pool, svc := setupPG(t)
+	ctx := context.Background()
+
+	_, err := svc.Register(ctx, service.RegisterInput{
+		TypeName: "tmp_dep_evolve",
+		Fields:   []meta.Field{{Name: "a", Type: "string"}},
+	}, "t1")
+	require.NoError(t, err)
+
+	// T1：手工连接模拟进行中的 Evolve（持有行锁、新 schema_def 未提交）
+	conn, err := pool.Acquire(ctx)
+	require.NoError(t, err)
+	defer conn.Release()
+	_, err = conn.Exec(ctx, `BEGIN`)
+	require.NoError(t, err)
+	_, err = conn.Exec(ctx,
+		`UPDATE data_types SET schema_def=$2, version=version+1 WHERE type_name=$1 AND status='active'`,
+		"tmp_dep_evolve", `{"fields":[{"name":"a","type":"string"},{"name":"b","type":"int"}]}`)
+	require.NoError(t, err)
+
+	done := make(chan error, 1)
+	go func() {
+		_, derr := svc.Deprecate(ctx, "tmp_dep_evolve", "t2")
+		done <- derr
+	}()
+	time.Sleep(300 * time.Millisecond) // 让 T2 完成快照读并阻塞在行锁上
+	_, err = conn.Exec(ctx, `COMMIT`)  // T1 提交演进，释放行锁
+	require.NoError(t, err)
+	select {
+	case err := <-done:
+		require.NoError(t, err)
+	case <-time.After(15 * time.Second):
+		t.Fatal("Deprecate 未在 T1 提交后完成（意外悬挂）")
+	}
+
+	var histSchema string
+	require.NoError(t, pool.QueryRow(ctx,
+		`SELECT schema_def FROM data_type_schema_history WHERE type_name=$1 AND op='deprecate'`,
+		"tmp_dep_evolve").Scan(&histSchema))
+	require.Contains(t, histSchema, `"b"`,
+		"deprecate 历史行应记录废弃时刻真实 schema（含演进新增的字段 b）——锁内重读生效")
+}

@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"strconv"
 
@@ -21,12 +22,12 @@ func IterDocsAll(ctx context.Context, q dbtx, typeName string) (next func() (*Do
 	rows, err := q.Query(ctx,
 		`SELECT `+docCols+` FROM "`+typeName+`" ORDER BY id ASC`)
 	if err != nil {
-		return nil, nil, apperr.New(500, apperr.CodeInternal, "导出查询失败")
+		return nil, nil, apperr.New(500, apperr.CodeInternal, fmt.Sprintf("导出查询失败: %v", err))
 	}
 	next = func() (*Document, error) {
 		if !rows.Next() {
 			if err := rows.Err(); err != nil {
-				return nil, apperr.New(500, apperr.CodeInternal, "导出迭代失败")
+				return nil, apperr.New(500, apperr.CodeInternal, fmt.Sprintf("导出迭代失败: %v", err))
 			}
 			return nil, io.EOF
 		}
@@ -47,7 +48,7 @@ func LockForReplace(ctx context.Context, q dbtx, typeName string) error {
 		if e := errLockWait(err); e != nil {
 			return e
 		}
-		return apperr.New(500, apperr.CodeInternal, "替换锁获取失败")
+		return apperr.New(500, apperr.CodeInternal, fmt.Sprintf("替换锁获取失败: %v", err))
 	}
 	return nil
 }
@@ -56,7 +57,7 @@ func LockForReplace(ctx context.Context, q dbtx, typeName string) error {
 func DeleteAllDocs(ctx context.Context, q dbtx, typeName string) (int64, error) {
 	tag, err := q.Exec(ctx, `DELETE FROM "`+typeName+`"`)
 	if err != nil {
-		return 0, apperr.New(500, apperr.CodeInternal, "清表失败")
+		return 0, apperr.New(500, apperr.CodeInternal, fmt.Sprintf("清表失败: %v", err))
 	}
 	return tag.RowsAffected(), nil
 }

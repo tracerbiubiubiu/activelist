@@ -143,6 +143,13 @@ func (s *TypeService) Deprecate(ctx context.Context, typeName, operator string) 
 			return nil, err
 		}
 		if moved {
+			// 锁内重读（Deprecate×Evolve 交错修复）：GetByName 的快照读发生在行锁
+			// 等待之前——并发演进提交后，历史行会记录演进前 schema（审计失真）。
+			// 拿到行锁后重读，才是废弃时刻的真实 schema。
+			cur, err = meta.GetByName(ctx, tx, typeName)
+			if err != nil {
+				return nil, err
+			}
 			if err := meta.InsertHistory(ctx, tx, typeName, "deprecate", cur.Fields, operator); err != nil {
 				return nil, err
 			}

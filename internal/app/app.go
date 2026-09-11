@@ -37,10 +37,12 @@ func (a *App) Run() error {
 	defer stop()
 
 	a.server = &http.Server{
-		Addr:         fmt.Sprintf(":%d", a.cfg.Server.Port),
-		Handler:      a.engine,
-		ReadTimeout:  a.cfg.Server.ReadTimeout,
-		WriteTimeout: a.cfg.Server.WriteTimeout,
+		Addr:              fmt.Sprintf(":%d", a.cfg.Server.Port),
+		Handler:           a.engine,
+		ReadTimeout:       a.cfg.Server.ReadTimeout,
+		ReadHeaderTimeout: a.cfg.Server.ReadHeaderTimeout,
+		WriteTimeout:      a.cfg.Server.WriteTimeout,
+		IdleTimeout:       a.cfg.Server.IdleTimeout,
 	}
 
 	serverErr := make(chan error, 1)

@@ -20,7 +20,8 @@ import (
 
 // provideLogger 应用日志（utils logger：slog + lumberjack 轮转，JSON Lines 稳定字段）。
 func provideLogger(cfg *config.Config) *slog.Logger {
-	return utilslogger.New(utilslogger.Config{Level: cfg.Log.Level, Dir: cfg.Log.Dir})
+	return utilslogger.New(utilslogger.Config{Level: cfg.Log.Level, Dir: cfg.Log.Dir,
+		MaxSize: cfg.Log.MaxSizeMB, MaxBackups: cfg.Log.MaxBackups, MaxAge: cfg.Log.MaxAgeDays})
 }
 
 // providePool PG 连接池（utils postgres：连接超时/缓存 describe 模式内置）+ 启动迁移。
@@ -29,10 +30,11 @@ func providePool(cfg *config.Config) (*pgxpool.Pool, func(), error) {
 	pc := utilspostgres.Config{
 		Host: cfg.Postgres.Host, Port: cfg.Postgres.Port,
 		User: cfg.Postgres.User, Password: cfg.Postgres.Password,
-		DBName:          cfg.Postgres.DBName,
-		MaxOpenConns:    cfg.Postgres.MaxOpenConns,
-		SSLMode:         "disable",
-		ApplicationName: "activelist",
+		DBName:           cfg.Postgres.DBName,
+		MaxOpenConns:     cfg.Postgres.MaxOpenConns,
+		SSLMode:          cfg.Postgres.SSLMode,
+		StatementTimeout: cfg.Postgres.StatementTimeout,
+		ApplicationName:  "activelist",
 	}
 	pool, cleanup, err := utilspostgres.New(pc)
 	if err != nil {
