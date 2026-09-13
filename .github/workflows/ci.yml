@@ -1,7 +1,7 @@
 name: ci
 on:
   push:
-    branches: [main, "feat/**"]
+    branches: ["**"]
   pull_request:
 
 jobs:

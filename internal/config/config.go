@@ -17,7 +17,9 @@ import (
 type Server struct {
 	Port        int           `mapstructure:"port"`
 	ReadTimeout time.Duration `mapstructure:"read_timeout"`
-	// WriteTimeout 需容纳导入大文件全程（M-A5；默认 300s）
+	// WriteTimeout 约束导出大响应写出段（默认 300s）；导入上传段的真实上限
+	// 是 ReadTimeout（net/http wholeReqDeadline 自 t0 起覆盖整个 body，默认 30s
+	// ≈1Gbps 下 ~300MB——更大导入须调大 read_timeout）
 	WriteTimeout time.Duration `mapstructure:"write_timeout"`
 	// ReadHeaderTimeout 防慢速头攻击（slowloris）；IdleTimeout 回收空闲keep-alive连接
 	ReadHeaderTimeout time.Duration `mapstructure:"read_header_timeout"`
@@ -156,6 +158,24 @@ func Load(path string) (*Config, error) {
 	if cfg.Business.PageSizeDefault <= 0 || cfg.Business.PageSizeMax < cfg.Business.PageSizeDefault ||
 		cfg.Business.ImportBatchRows <= 0 || cfg.Business.ImportMaxBytes <= 0 {
 		return nil, fmt.Errorf("business 参数非法（须为正且 page_size_max ≥ page_size_default）")
+	}
+	// R6：负值拒绝——lumberjack 对 0/负值=不裁剪（日志无界累积，访问日志含
+	// 工号/IP）；statement_timeout 负值=静默不限。0 本身合法（log 尺寸回退
+	// 100MB 默认 / 超时不限）
+	for _, bad := range []struct {
+		name string
+		v    int
+	}{
+		{"log.max_size_mb", cfg.Log.MaxSizeMB},
+		{"log.max_backups", cfg.Log.MaxBackups},
+		{"log.max_age_days", cfg.Log.MaxAgeDays},
+	} {
+		if bad.v < 0 {
+			return nil, fmt.Errorf("%s 非法（须 ≥0，0=按内置默认；负值会静默解除轮转防护）", bad.name)
+		}
+	}
+	if cfg.Postgres.StatementTimeout < 0 {
+		return nil, fmt.Errorf("postgres.statement_timeout 非法（须 ≥0，0=不限）")
 	}
 	if cfg.Security.Callers == nil {
 		cfg.Security.Callers = map[string]string{}
