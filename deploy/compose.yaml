@@ -36,6 +36,9 @@ services:
       - wal_archive:/wal_archive
     networks:
       - activelist_internal
+    # 2026-09-14 备份事故修复：postgres 原为默认 no，停机后不自启 → pgbackup 每日
+    # 02:00 pg_dump 连续三日 DNS 解析失败（postgres 不可达）。与其他服务口径对齐。
+    restart: unless-stopped
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U activelist -d activelist"]
       interval: 5s
@@ -76,7 +79,7 @@ services:
       PGPASSWORD: ${ACTIVELIST_PG_PASSWORD}
       PGDATABASE: activelist
       BACKUP_DIR: /backups
-      RETAIN_DAYS: "14"
+      RETAIN_COUNT: "14"
     volumes:
       - backups:/backups
       - ./backup/backup.sh:/usr/local/bin/backup.sh:ro

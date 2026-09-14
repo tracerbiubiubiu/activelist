@@ -1,14 +1,13 @@
 #!/bin/sh
 # activelist 每日物理备份循环（M-A6 部署件）：
 #   - 每日 02:00 后执行一次 pg_dump -Fc（自定义压缩格式）
-#   - 保留最近 RETAIN_DAYS 份，超出轮转删除（文件名含日期，按名排序即按时间序）
+#   - 保留最近 RETAIN_COUNT 份，超出轮转删除（文件名含日期，按名排序即按时间序）
 #   - WAL 归档由 postgres 服务 archive_command 持续写入 /wal_archive（只读挂载于此）
-# 环境变量（compose 注入）：PGHOST/PGUSER/PGPASSWORD/PGDATABASE/BACKUP_DIR/RETAIN_DAYS
+# 环境变量（compose 注入）：PGHOST/PGUSER/PGPASSWORD/PGDATABASE/BACKUP_DIR/RETAIN_COUNT
 # 恢复步骤见同目录 README.md。
 set -eu
 
 BACKUP_DIR="${BACKUP_DIR:-/backups}"
-RETAIN_DAYS="${RETAIN_DAYS:-14}"
 RETAIN_COUNT="${RETAIN_COUNT:-14}"
 
 mkdir -p "$BACKUP_DIR"
@@ -17,13 +16,19 @@ do_backup() {
   stamp="$(date +%Y%m%d)"
   target="$BACKUP_DIR/al-$stamp.dump"
   if [ -f "$target" ]; then
-    echo "[backup] $target 已存在，跳过"
-    return 0
+    if [ -s "$target" ]; then
+      echo "[backup] $target 已存在，跳过"
+      return 0
+    fi
+    # 0 字节残留（历史版本产物/异常中断）→ 删除重做，防「已存在跳过」永久占住当日槽位
+    echo "[backup] $target 为 0 字节残留，删除重做"
+    rm -f "$target"
   fi
   echo "[backup] start $target"
   # 先落临时文件、成功后原子改名：失败/中断不残留 0 字节假备份
   tmp="$BACKUP_DIR/.al-$stamp.dump.part"
-  if ! pg_dump -Fc -f "$tmp"; then
+  # 产物空文件也判失败（真实库的 pg_dump 产物恒 >0，空文件=假成功）
+  if ! pg_dump -Fc -f "$tmp" || [ ! -s "$tmp" ]; then
     echo "[backup] pg_dump 失败，删除残留临时文件"
     rm -f "$tmp"
     return 1

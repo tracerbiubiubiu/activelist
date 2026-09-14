@@ -41,6 +41,7 @@ docker compose start apiserver
 
 ## 注意
 
-- 备份失败**不静默**：pgbackup 日志可见（`docker compose logs pgbackup`），脚本保留现场次日重试；
+- 备份失败**不静默**：pgbackup 日志可见（`docker compose logs pgbackup`）；失败当日每 10 分钟自动重试、失败日不做轮转（防把好备份轮掉）、成功才标记当日完成；
+- **常见失败根因**：postgres 未运行（pg_dump 报 `could not translate host name "postgres"`）——postgres 已配 `restart: unless-stopped` 自愈；若手工 `docker compose stop postgres` 停库，备份会持续重试失败直至库恢复，属预期行为；
 - `backups` / `wal_archive` 卷建议纳入宿主机级外部备份（卷快照/同步），防单机盘损；
-- 保留期调整：`RETAIN_COUNT`（份数）/ `RETAIN_DAYS`（脚本兼容字段）。
+- 保留期调整：`RETAIN_COUNT`（份数，默认 14）。
