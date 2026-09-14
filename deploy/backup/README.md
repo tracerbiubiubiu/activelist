@@ -30,14 +30,33 @@ docker compose start apiserver
 
 ## WAL 归档（PITR，可选进阶）
 
-`wal_archive` 卷保存 5 分钟粒度 WAL 段。基于某份 base backup 做 PITR：
+> **⚠ 2026-09-14 实测勘误（原蓝本作废）**：PITR 的基准备份必须是**物理基备（`pg_basebackup`）**——
+> `al-*.dump` 是 pg_dump **逻辑导出**，恢复出的集群 LSN 与原库 WAL 时间线不接续，
+> **无法用归档 WAL 回放**。原「dump 恢复 + restore_command 回放」蓝本不可行。
+> 实测过的完整做法（zhuzhao 侧已跑通：`deployments/backup/README.md`）：
 
-1. 取一份 `al-*.dump` 全量恢复至临时实例（见上）；
-2. 临时实例 `recovery.signal` + `postgresql.auto.conf` 配 `restore_command = 'cp /wal_archive/%f %p'`
-   与 `recovery_target_time`；
-3. 演练/接管后重置归档起点。
+```sh
+# 1. 物理基备（容器内落盘再 docker cp 出来；tar 流出 stdout 模式强制带流 WAL 不可用）
+docker exec activelist-postgres-1 sh -c 'pg_basebackup -D /tmp/base -Ft -U activelist'
+docker cp activelist-postgres-1:/tmp/base /tmp/al_base_dir
 
-> PITR 流程**未实测**（依赖真实部署环境演练）——首次演练安排在部署批，本节为操作蓝本。
+# 2. 解包至卷（注意卷根=数据目录，勿多套一层；recovery.signal 必须手建；chown 归属运行用户）
+docker run --rm -v <基备卷>:/data -v /tmp/al_base_dir:/host:ro alpine sh -c \
+  'mkdir -p /data/pg_wal && tar -xf /host/base.tar -C /data && tar -xf /host/pg_wal.tar -C /data/pg_wal \
+   && touch /data/recovery.signal && chown -R 999:999 /data'
+
+# 3. 临时实例回放（挂同一 wal_archive 卷；目标时刻=误操作前一刻）
+docker run -d --name al-pitr -v <基备卷>:/var/lib/postgresql/data \
+  -v activelist_wal_archive:/wal_archive:ro postgres:15-alpine \
+  postgres -c restore_command='cp /wal_archive/%f %p' \
+           -c recovery_target_time='<目标时刻>' -c recovery_target_action='promote'
+
+# 4. 若报「recovery ended before configured recovery target was reached」：
+#    目标时刻所在的当前部分段尚未归档——在活库 pg_switch_wal() 强制切段后重启临时实例即可
+```
+
+> 实测结果（zhuzhao 侧）：回放精确停在 recovery_target_time 前最后一条提交，
+> 目标时刻前的行在、后的行不在。
 
 ## 注意
 
