@@ -21,7 +21,14 @@ do_backup() {
     return 0
   fi
   echo "[backup] start $target"
-  pg_dump -Fc -f "$target"
+  # 先落临时文件、成功后原子改名：失败/中断不残留 0 字节假备份
+  tmp="$BACKUP_DIR/.al-$stamp.dump.part"
+  if ! pg_dump -Fc -f "$tmp"; then
+    echo "[backup] pg_dump 失败，删除残留临时文件"
+    rm -f "$tmp"
+    return 1
+  fi
+  mv "$tmp" "$target"
   echo "[backup] done $(ls -lh "$target" | awk '{print $5}')"
 }
 
@@ -36,11 +43,16 @@ rotate() {
 last=""
 while :; do
   today="$(date +%F)"
-  # 每日 02:00 后、当日未备份 → 执行一次；其后每 10 分钟轮询
+  # 每日 02:00 后、当日未备份 → 执行一次；其后每 10 分钟轮询。
+  # 仅【成功】才标记当日已完成——失败日保持未标记，10 分钟后自动重试，
+  # 且失败时不做轮转（防止把最近的好备份轮掉、只留空文件）。
   if [ "$(date +%H)" -ge 2 ] && [ "$last" != "$today" ]; then
-    do_backup || echo "[backup] 备份失败（保留现场，次日重试）"
-    rotate
-    last="$today"
+    if do_backup; then
+      rotate
+      last="$today"
+    else
+      echo "[backup] 备份失败，10 分钟后重试"
+    fi
   fi
   sleep 600
 done
