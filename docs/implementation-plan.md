@@ -57,6 +57,7 @@
 |------|------|------|
 | POST | `/api/v1/admin/types` | 注册新类型（含字段定义） |
 | GET | `/api/v1/admin/types` | 类型列表 |
+| GET | `/api/v1/admin/types/rules` | 类型与字段创建规则（前端弹窗展示用） |
 | GET | `/api/v1/admin/types/:typeName` | 当前 schema 定义 |
 | GET | `/api/v1/admin/types/:typeName/history` | **schema 变更历史**（元数据侧，非数据快照） |
 | POST | `/api/v1/admin/types/:typeName/schema` | Schema 演进（方案 D 语义） |

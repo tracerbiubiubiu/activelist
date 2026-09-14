@@ -14,6 +14,7 @@ import (
 	"github.com/tracerbiubiubiu/activelist/internal/meta"
 	"github.com/tracerbiubiubiu/activelist/internal/middleware"
 	"github.com/tracerbiubiubiu/activelist/internal/service"
+	"github.com/tracerbiubiubiu/activelist/internal/validation"
 )
 
 // operatorFallback X-Operator 缺省值（AKSKAuth+Operator 中间件缺头时的兜底，
@@ -74,6 +75,7 @@ func New(d Deps) *gin.Engine {
 		{
 			types.POST("", d.registerType)
 			types.GET("", d.listTypes)
+			types.GET("/rules", d.typeRules) // 静态优先于 /:typeName
 			types.GET("/:typeName", d.getType)
 			types.POST("/:typeName/deprecate", d.deprecateType)
 			types.POST("/:typeName/schema", d.evolveType)
@@ -124,6 +126,11 @@ func (d *Deps) listTypes(c *gin.Context) {
 		list = []meta.Definition{}
 	}
 	OK(c, gin.H{"list": list, "total": len(list)})
+}
+
+// typeRules 类型与字段创建规则（前端创建类型弹窗展示用；纯静态数据无需 service）。
+func (d *Deps) typeRules(c *gin.Context) {
+	OK(c, validation.GetRules())
 }
 
 // getType 查类型当前 schema 定义（不存在 404）。

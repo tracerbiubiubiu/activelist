@@ -40,8 +40,62 @@ var fieldTypes = map[string]bool{
 	"int": true, "string": true, "int_list": true, "string_list": true,
 }
 
+// Rules 类型与字段创建规则（前端创建类型弹窗展示用；规则变更前端自动同步，
+// 无需硬编码——GET /api/v1/admin/types/rules 返回此结构）。
+type Rules struct {
+	TypeName NameRule   `json:"type_name"`
+	Fields   FieldRules `json:"fields"`
+}
+
+// NameRule 命名规则（类型名/字段名共用结构）。
+type NameRule struct {
+	Pattern         string   `json:"pattern"`          // 正则
+	PatternDesc     string   `json:"pattern_desc"`     // 人读描述
+	MaxLength       int      `json:"max_length"`       // 含首字符总长上限
+	ReservedFields  []string `json:"reserved_fields"`  // 保留字段禁用清单
+	ReservedTables  []string `json:"reserved_tables"`  // 系统表名禁用清单（仅类型名）
+	ForbiddenPrefix []string `json:"forbidden_prefix"` // 禁用前缀（仅类型名）
+}
+
+// FieldRules 字段定义集合规则。
+type FieldRules struct {
+	NamePattern     string   `json:"name_pattern"`      // 字段名正则
+	NamePatternDesc string   `json:"name_pattern_desc"` // 人读描述
+	NameMaxLength   int      `json:"name_max_length"`   // 含首字符总长上限
+	ReservedFields  []string `json:"reserved_fields"`   // 保留字段禁用清单
+	AllowedTypes    []string `json:"allowed_types"`     // 允许的字段类型
+	MinFields       int      `json:"min_fields"`        // 最少字段数
+	NoDuplicate     bool     `json:"no_duplicate"`      // 禁止重复字段名
+}
+
+// reservedFieldsList 保留字段清单（错误消息展示用，人读友好序）。
+const reservedFieldsList = "id, version, status, created_at, updated_at, created_by, updated_by, data"
+
 func invalid(msg string) *apperr.Error {
 	return apperr.New(422, apperr.CodeValidation, msg)
+}
+
+// GetRules 返回类型与字段创建规则（前端弹窗展示用）。
+func GetRules() Rules {
+	return Rules{
+		TypeName: NameRule{
+			Pattern:         `^[a-z][a-z0-9_]{0,50}$`,
+			PatternDesc:     "小写字母开头，仅小写字母/数字/下划线",
+			MaxLength:       51,
+			ReservedFields:  []string{"id", "version", "status", "created_at", "updated_at", "created_by", "updated_by", "data"},
+			ReservedTables:  []string{"data_types", "data_type_schema_history", "schema_migrations"},
+			ForbiddenPrefix: []string{"pg_"},
+		},
+		Fields: FieldRules{
+			NamePattern:     `^[a-z][a-z0-9_]{0,62}$`,
+			NamePatternDesc: "小写字母开头，仅小写字母/数字/下划线",
+			NameMaxLength:   63,
+			ReservedFields:  []string{"id", "version", "status", "created_at", "updated_at", "created_by", "updated_by", "data"},
+			AllowedTypes:    []string{"int", "string", "int_list", "string_list"},
+			MinFields:       1,
+			NoDuplicate:     true,
+		},
+	}
 }
 
 // ValidateTypeName 类型名白名单。
@@ -51,7 +105,8 @@ func ValidateTypeName(name string) *apperr.Error {
 			WithDetail("field", "type_name").WithDetail("value", name)
 	}
 	if reservedFields[name] {
-		return apperr.New(422, apperr.CodeReservedField, "类型名与保留字段冲突: "+name).
+		return apperr.New(422, apperr.CodeReservedField,
+			"类型名与保留字段冲突: "+name+"（保留字段: "+reservedFieldsList+"）").
 			WithDetail("field", "type_name").WithDetail("value", name)
 	}
 	if reservedTables[name] {
@@ -77,7 +132,8 @@ func ValidateFields(fields []meta.Field) *apperr.Error {
 				WithDetail("field", "fields").WithDetail("index", i).WithDetail("value", f.Name)
 		}
 		if reservedFields[f.Name] {
-			return apperr.New(422, apperr.CodeReservedField, "字段名与保留字段冲突: "+f.Name).
+			return apperr.New(422, apperr.CodeReservedField,
+				"字段名与保留字段冲突: "+f.Name+"（保留字段: "+reservedFieldsList+"）").
 				WithDetail("field", "fields").WithDetail("value", f.Name)
 		}
 		if !fieldTypes[f.Type] {

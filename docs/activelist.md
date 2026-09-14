@@ -721,6 +721,7 @@ Query 接口不能完全透传用户 filter，需做安全处理：
 |------|------|------|
 | POST | `/api/v1/admin/types` | 注册新类型 |
 | GET | `/api/v1/admin/types` | 查所有类型列表 |
+| GET | `/api/v1/admin/types/rules` | 类型与字段创建规则（前端弹窗展示用） |
 | GET | `/api/v1/admin/types/:typeName` | 查类型当前 Schema 定义 |
 | GET | `/api/v1/admin/types/:typeName/history` | 查类型 Schema 变更历史 |
 | POST | `/api/v1/admin/types/:typeName/schema` | Schema 版本演进 |
