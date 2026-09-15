@@ -45,17 +45,17 @@ docker network create zhuzhao_to_activelist
 export ACTIVELIST_PG_PASSWORD=<PG 口令>
 
 # 2. 构建镜像 + 起全栈（PG + apiserver×2 多副本 + 每日备份）
-docker compose -f deploy/compose.yaml up -d --build
+docker compose -f deploy/compose.prod.yaml up -d --build
 
 # 3. 健康检查（/apiserver 走内部网络；探针免鉴权）
-docker compose -f deploy/compose.yaml exec apiserver \
+docker compose -f deploy/compose.prod.yaml exec apiserver \
   wget -qO- http://127.0.0.1:8080/readyz
 
 # 4. 签名调用验证（zhuzhao 侧：GATEWAY_AK/GATEWAY_SK 同值 + upstreams
 #    prefix=/al target=http://activelist:8080；经网关 /al/api/v1/... 访问）
 ```
 
-- 开发态（本地直跑二进制 + 仅 PG 容器）：`deploy/docker-compose.yaml` + `ACTIVELIST_PG_PORT=15432`；
+- 开发态（本地直跑二进制 + 仅 PG 容器）：`deploy/compose.dev.yaml` + `ACTIVELIST_PG_PORT=15432`；
 - 接口清单 / 配置项：[implementation-plan.md §4/§6](./docs/implementation-plan.md)；
 - **备份与恢复**：[deploy/backup/README.md](./deploy/backup/README.md)（每日 pg_dump + WAL 归档，保留 14 份）。
 

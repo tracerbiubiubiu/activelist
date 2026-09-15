@@ -1,5 +1,5 @@
-# M-A1 开发态：仅 PG（apiserver 本地 `make build` 后直跑；
-# 双 network + apiserver 多副本 + 备份随 M-A6 部署收尾，A7）。
+# 开发态 compose：仅 PG（apiserver 本地 `make build` 后直跑，ACTIVELIST_PG_PORT=15432）。
+# 部署态（双 network + apiserver 多副本 + 备份）= deploy/compose.prod.yaml。
 services:
   postgres:
     image: postgres:15-alpine # 与 zhuzhao 测试容器同版本；16 拉取受当前网络限制，升级随部署复盘

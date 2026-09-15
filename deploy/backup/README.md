@@ -13,19 +13,21 @@
 ## 恢复步骤（pg_dump → 全量恢复）
 
 ```sh
+# 均在 deploy/ 目录执行（compose.prod.yaml 不在 docker compose 自动发现列表，
+# 显式 -f 避免「名字没对上就不动」的静默空转）
 # 1. 停写（apiserver 缩容或断网）
-docker compose stop apiserver
+docker compose -f compose.prod.yaml stop apiserver
 
 # 2. 清库重建（或 drop/create 目标库）
-docker compose exec postgres psql -U activelist -d postgres \
+docker compose -f compose.prod.yaml exec postgres psql -U activelist -d postgres \
   -c "DROP DATABASE activelist;" -c "CREATE DATABASE activelist OWNER activelist;"
 
 # 3. 恢复指定备份
-cat backups/al-20260909.dump | docker compose exec -T postgres \
+cat backups/al-20260909.dump | docker compose -f compose.prod.yaml exec -T postgres \
   pg_restore -U activelist -d activelist --no-owner --role=activelist
 
 # 4. 启动并抽验（/readyz + 名单数据计数）
-docker compose start apiserver
+docker compose -f compose.prod.yaml start apiserver
 ```
 
 ## WAL 归档（PITR，可选进阶）
@@ -60,7 +62,7 @@ docker run -d --name al-pitr -v <基备卷>:/var/lib/postgresql/data \
 
 ## 注意
 
-- 备份失败**不静默**：pgbackup 日志可见（`docker compose logs pgbackup`）；失败当日每 10 分钟自动重试、失败日不做轮转（防把好备份轮掉）、成功才标记当日完成；
-- **常见失败根因**：postgres 未运行（pg_dump 报 `could not translate host name "postgres"`）——postgres 已配 `restart: unless-stopped` 自愈；若手工 `docker compose stop postgres` 停库，备份会持续重试失败直至库恢复，属预期行为；
+- 备份失败**不静默**：pgbackup 日志可见（`docker compose -f compose.prod.yaml logs pgbackup`）；失败当日每 10 分钟自动重试、失败日不做轮转（防把好备份轮掉）、成功才标记当日完成；
+- **常见失败根因**：postgres 未运行（pg_dump 报 `could not translate host name "postgres"`）——postgres 已配 `restart: unless-stopped` 自愈；若手工 `docker compose -f compose.prod.yaml stop postgres` 停库，备份会持续重试失败直至库恢复，属预期行为；
 - `backups` / `wal_archive` 卷建议纳入宿主机级外部备份（卷快照/同步），防单机盘损；
 - 保留期调整：`RETAIN_COUNT`（份数，默认 14）。

@@ -1,4 +1,4 @@
-# activelist 部署态 compose（M-A6 部署件；开发态 = deploy/docker-compose.yaml 仅 PG）。
+# activelist 部署态 compose（M-A6 部署件；开发态 = deploy/compose.dev.yaml 仅 PG）。
 #
 # 拓扑（ADR-003 D5 双 network）：apiserver 跨双网——activelist_internal（仅 PG 可达）
 # 与 zhuzhao_to_activelist（external，由部署侧预建：docker network create zhuzhao_to_activelist，
