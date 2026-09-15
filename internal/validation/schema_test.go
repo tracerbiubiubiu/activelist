@@ -80,3 +80,36 @@ func TestValidateFields(t *testing.T) {
 		})
 	}
 }
+
+// GetRules 与强制校验同源：前端按展示规则放行的输入，提交时不得被 422 拒绝
+// （防「展示的规则 ≠ 强制的规则」漂移——/rules 端点即为此契约存在）。
+func TestGetRules_ConsistentWithEnforcement(t *testing.T) {
+	r := GetRules()
+
+	// 正则串与编译正则同串（同源即同义）
+	require.Equal(t, typeNameRe.String(), r.TypeName.Pattern)
+	require.Equal(t, fieldNameRe.String(), r.Fields.NamePattern)
+
+	// 广告的长度上限与强制正则边界一致：上限内必过、超 1 位必拒
+	require.Nil(t, ValidateTypeName(strings.Repeat("a", r.TypeName.MaxLength)))
+	require.NotNil(t, ValidateTypeName(strings.Repeat("a", r.TypeName.MaxLength+1)))
+	require.Nil(t, ValidateFields([]meta.Field{
+		{Name: strings.Repeat("a", r.Fields.NameMaxLength), Type: "string"}}))
+	require.NotNil(t, ValidateFields([]meta.Field{
+		{Name: strings.Repeat("a", r.Fields.NameMaxLength+1), Type: "string"}}))
+
+	// 清单与强制 map 同源（升序稳定输出）
+	require.Equal(t, sortedKeys(reservedTables), r.TypeName.ReservedTables)
+	require.Equal(t, sortedKeys(reservedFields), r.TypeName.ReservedFields)
+	require.Equal(t, sortedKeys(reservedFields), r.Fields.ReservedFields)
+	require.Equal(t, sortedKeys(fieldTypes), r.Fields.AllowedTypes)
+
+	// 禁用前缀一致： advertised 前缀开头必拒
+	require.NotNil(t, ValidateTypeName(r.TypeName.ForbiddenPrefix[0]+"x"))
+
+	// 允许类型逐个可过、典型表外类型必拒
+	for _, typ := range r.Fields.AllowedTypes {
+		require.Nil(t, ValidateFields([]meta.Field{{Name: "x", Type: typ}}))
+	}
+	require.NotNil(t, ValidateFields([]meta.Field{{Name: "x", Type: "boolean"}}))
+}

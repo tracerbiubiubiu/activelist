@@ -5,20 +5,30 @@ package validation
 
 import (
 	"regexp"
+	"sort"
 	"strings"
 
 	"github.com/tracerbiubiubiu/activelist/internal/apperr"
 	"github.com/tracerbiubiubiu/activelist/internal/meta"
 )
 
-// typeNameRe/fieldNameRe 标识符白名单：小写字母开头，仅小写字母/数字/下划线。
-// typeName 同时是动态表名（≤63 = PG 标识符上限），白名单本身即注入防线，
-// DDL 中仍统一双引号引用。
-var (
-	// typeName ≤51：动态索引名 idx_<name>_created 须 ≤63（4+51+8），
+// 规则常量（单一事实源）：编译正则、GetRules 前端展示、错误消息同源取值，
+// 改规则只改这里——防「展示的规则 ≠ 强制的规则」漂移。
+const (
+	typeNamePattern  = `^[a-z][a-z0-9_]{0,50}$`
+	fieldNamePattern = `^[a-z][a-z0-9_]{0,62}$`
+	// typeNameMaxLen ≤51：动态索引名 idx_<name>_created 须 ≤63（4+51+8），
 	// 超长被 PG 截断后长前缀重名类型会静默共享索引名（IF NOT EXISTS 跳过建索引）。
-	typeNameRe  = regexp.MustCompile(`^[a-z][a-z0-9_]{0,50}$`)
-	fieldNameRe = regexp.MustCompile(`^[a-z][a-z0-9_]{0,62}$`)
+	typeNameMaxLen  = 51
+	fieldNameMaxLen = 63 // PG 标识符上限
+	forbiddenPrefix = "pg_"
+)
+
+// typeNameRe/fieldNameRe 标识符白名单：小写字母开头，仅小写字母/数字/下划线。
+// typeName 同时是动态表名，白名单本身即注入防线，DDL 中仍统一双引号引用。
+var (
+	typeNameRe  = regexp.MustCompile(typeNamePattern)
+	fieldNameRe = regexp.MustCompile(fieldNamePattern)
 )
 
 // reservedTables 系统表名禁用（typeName 即动态表名）：元数据两表 + 迁移记账表
@@ -38,6 +48,16 @@ var reservedFields = map[string]bool{
 // fieldTypes 允许的字段类型（最终画像：int/string/二者的列表）。
 var fieldTypes = map[string]bool{
 	"int": true, "string": true, "int_list": true, "string_list": true,
+}
+
+// sortedKeys map 键升序输出（GetRules 的 JSON 契约要求稳定排序）。
+func sortedKeys(m map[string]bool) []string {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	return keys
 }
 
 // Rules 类型与字段创建规则（前端创建类型弹窗展示用；规则变更前端自动同步，
@@ -75,23 +95,24 @@ func invalid(msg string) *apperr.Error {
 	return apperr.New(422, apperr.CodeValidation, msg)
 }
 
-// GetRules 返回类型与字段创建规则（前端弹窗展示用）。
+// GetRules 返回类型与字段创建规则（前端弹窗展示用）。全部字段自上方常量与
+// 校验 map 同源派生——展示与强制校验是同一套规则，不存在第二份可漂移的副本。
 func GetRules() Rules {
 	return Rules{
 		TypeName: NameRule{
-			Pattern:         `^[a-z][a-z0-9_]{0,50}$`,
+			Pattern:         typeNamePattern,
 			PatternDesc:     "小写字母开头，仅小写字母/数字/下划线",
-			MaxLength:       51,
-			ReservedFields:  []string{"id", "version", "status", "created_at", "updated_at", "created_by", "updated_by", "data"},
-			ReservedTables:  []string{"data_types", "data_type_schema_history", "schema_migrations"},
-			ForbiddenPrefix: []string{"pg_"},
+			MaxLength:       typeNameMaxLen,
+			ReservedFields:  sortedKeys(reservedFields),
+			ReservedTables:  sortedKeys(reservedTables),
+			ForbiddenPrefix: []string{forbiddenPrefix},
 		},
 		Fields: FieldRules{
-			NamePattern:     `^[a-z][a-z0-9_]{0,62}$`,
+			NamePattern:     fieldNamePattern,
 			NamePatternDesc: "小写字母开头，仅小写字母/数字/下划线",
-			NameMaxLength:   63,
-			ReservedFields:  []string{"id", "version", "status", "created_at", "updated_at", "created_by", "updated_by", "data"},
-			AllowedTypes:    []string{"int", "string", "int_list", "string_list"},
+			NameMaxLength:   fieldNameMaxLen,
+			ReservedFields:  sortedKeys(reservedFields),
+			AllowedTypes:    sortedKeys(fieldTypes),
 			MinFields:       1,
 			NoDuplicate:     true,
 		},
@@ -113,7 +134,7 @@ func ValidateTypeName(name string) *apperr.Error {
 		return apperr.New(422, apperr.CodeReservedField, "类型名与系统表冲突: "+name).
 			WithDetail("field", "type_name").WithDetail("value", name)
 	}
-	if strings.HasPrefix(name, "pg_") {
+	if strings.HasPrefix(name, forbiddenPrefix) {
 		return invalid("类型名不允许 pg_ 前缀（PG 系统命名空间）").
 			WithDetail("field", "type_name").WithDetail("value", name)
 	}
