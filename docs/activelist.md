@@ -651,15 +651,15 @@ Query 接口不能完全透传用户 filter，需做安全处理：
 - `page_size` 上限 100
 - 不传 `page` 默认第 1 页
 
-**响应格式**：
+**响应格式**（2026-09-09 实现对齐——keyset 复合游标分页，现行 API 以 implementation-plan §4 为准）：
 ```json
 {
   "list": [...],
-  "total": 1234,
-  "page": 1,
-  "page_size": 20
+  "page_size": 20,
+  "next_cursor": { "after_created_at": "...", "after_id": 42 }
 }
 ```
+> 无 `total`、无跳页：满页才出 `next_cursor`，下一页空列表时 cursor 为 null（遍历终止）；游标 = 上一行 `(created_at, id)`，两参数成对出现缺一 400。
 
 ### 6.8 错误码规范
 
@@ -668,7 +668,7 @@ Query 接口不能完全透传用户 filter，需做安全处理：
 | 状态码 | 场景 |
 |--------|------|
 | 200 | 成功 |
-| 201 | 创建成功 |
+| ~~201~~ | ~~创建成功~~（2026-09-08 信封收敛：创建统一 200，无 201/204） |
 | 400 | 参数错误（JSON 解析失败、缺必填参数） |
 | 404 | 资源不存在（类型/文档/Schema 版本） |
 | 409 | 冲突（类型已存在、文档已删除、Schema 变更冲突） |
@@ -677,22 +677,17 @@ Query 接口不能完全透传用户 filter，需做安全处理：
 | 500 | 内部错误（MongoDB 异常、未知错误） |
 | 503 | 依赖不可用（MongoDB/Redis 不可达） |
 
-**响应体格式**（统一 `{code, msg, data}` 包装，与 zhuzhao 网关格式一致）：
+**响应体格式**（2026-09-08 三仓信封收敛对齐——现行信封 = standards §3.3，原 `{code, msg, data, detail}` 形态为历史保留）：
 ```json
 {
-  "code": 422,
-  "msg": "字段 age 类型错误，期望 integer 实际 string",
+  "code": 100000,
+  "message": "Schema 校验失败（field=age；expected=integer；actual=string）",
   "data": null,
-  "detail": {
-    "error_code": "VALIDATION_ERROR",
-    "field": "age",
-    "expected": "integer",
-    "actual": "string"
-  }
+  "request_id": "req-..."
 }
 ```
 
-> `code` 为整数 HTTP 状态码（与 zhuzhao 一致），字符串错误码移到 `detail.error_code`。成功响应 `data` 为业务数据，错误响应 `data` 为 `null`，`detail` 为可选的错误详情。
+> 现行契约：`code` = **数值业务码**（成功 `0`；activelist 段 100000–100999，映射表见 zhuzhao 仓 `docs/api/errcode.md` §4——`VALIDATION_ERROR`→100000→HTTP 422）；`Detail` 上下文按键名字典序折叠进 `message`（信封无 `detail` 字段）；`request_id` 回显透传。HTTP 状态码只表重试语义（4xx 不可重试 / 5xx 可重试）。
 
 **错误码常量**（`code` 字段）：
 
@@ -736,13 +731,16 @@ Query 接口不能完全透传用户 filter，需做安全处理：
 | GET | `/api/v1/data/:typeName/:id` | 查询单个文档 |
 | POST | `/api/v1/data/:typeName/:id/update` | 更新文档（2026-09-09 实现路由形态） |
 | POST | `/api/v1/data/:typeName/:id/delete` | 软删除文档（同上） |
-| GET | `/api/v1/data/:typeName/:id/history` | 查文档变更历史 |
+| POST | `/api/v1/data/:typeName/:id/restore` | 恢复软删数据（2026-09-09 实现新增） |
+| GET | `/api/v1/data/:typeName/export` | 全量导出 JSON（含软删行；2026-09-09 实现新增） |
+| POST | `/api/v1/data/:typeName/import` | 全量替换导入（2026-09-09 实现新增） |
+| ~~GET~~ | ~~`/api/v1/data/:typeName/:id/history`~~ | 已移除——数据变更历史 = 审计，归 zhuzhao（2026-09-08） |
 
-**响应格式**（统一 `{code, msg, data}` 包装，与 zhuzhao 网关格式一致）：
-- 单文档：`{ "code": 200, "msg": "success", "data": { "_id": "...", "name": "...", ... } }`（data 含系统字段）
-- 列表：`{ "code": 200, "msg": "success", "data": { "list": [...], "total": 1234, "page": 1, "page_size": 20 } }`（详见 6.7）
-- 历史：`{ "code": 200, "msg": "success", "data": { "list": [...], "total": 1234, "page": 1, "page_size": 20 } }`（每条含 snapshot/event/operator/operatedAt）
-- 错误：`{ "code": 422, "msg": "...", "data": null, "detail": { "error_code": "VALIDATION_ERROR", ... } }`（详见 6.8）
+**响应格式**（2026-09-08 信封收敛对齐，统一 `{code, message, data, request_id}`，规范 = standards §3.3）：
+- 成功：`{ "code": 0, "message": "success", "data": { "id": "42", "version": 1, "status": "active", "data": {...}, "created_by": "...", "created_at": "...", "updated_at": "..." }, "request_id": "req-..." }`（创建统一 200；int64 id 字符串序列化）
+- 列表：`data = { "list": [...], "page_size": 20, "next_cursor": {...} }`（keyset，详见 6.7 对齐注）
+- 导入：`data = { "rows": 3, "deleted": 2, "max_id": 3, "duration_ms": 120 }`（批次审计素材）
+- 错误：`{ "code": 100000, "message": "...（field=age；expected=integer）", "data": null, "request_id": "req-..." }`（详见 6.8 对齐注）
 
 ---
 
@@ -2066,7 +2064,7 @@ activelist 在 Schema 定义中支持 `sensitive: true` 标记：
 | 类型删除 | 禁止删除，只支持 deprecated |
 | 查询安全 | 字段白名单 + 操作符黑名单 + 强制分页 |
 | API 版本号 | `/api/v1/` |
-| 响应格式 | 统一 `{code, msg, data}` 包装，与 zhuzhao 网关格式一致 |
+| 响应格式 | 统一 `{code, message, data, request_id}` 信封（2026-09-08 三仓收敛：成功 code=0、创建统一 200；数值业务码映射见 errcode.md §4） |
 | 历史集合保留 | 永久保留，不设 TTL，磁盘定期扩容（详见 §17.2） |
 | 审计日志 | 两层审计：zhuzhao 网关层（跳过 body）+ activelist 业务层（完整记录 + 敏感字段脱敏） |
 | 日志基础设施 | 复用 zhuzhao `pkg/log/zap/logger` + `pkg/trace` + accesslog 中间件模式 |
