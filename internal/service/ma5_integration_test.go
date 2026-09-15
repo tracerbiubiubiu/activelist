@@ -145,14 +145,15 @@ func TestA5_ImportValidationRollback(t *testing.T) {
 	keep := insertDoc(t, dsvc, "va_item", 1, "keep")
 
 	cases := []struct {
-		name string
-		file string
+		name  string
+		file  string
+		dupID int64 // >0 时断言 detail.duplicate_id（重复 id 用例的定位回显）
 	}{
-		{"缺必填字段", `[{"id":"10","data":{"qty":1}}]`},
-		{"文件内重复 id", `[{"id":"10","data":{"name":"x"}},{"id":"10","data":{"name":"y"}}]`},
-		{"非法 status", `[{"id":"10","status":"gone","data":{"name":"x"}}]`},
-		{"缺 id", `[{"data":{"name":"x"}}]`},
-		{"未知字段", `[{"id":"10","data":{"name":"x","typo":1}}]`},
+		{"缺必填字段", `[{"id":"10","data":{"qty":1}}]`, 0},
+		{"文件内重复 id", `[{"id":"10","data":{"name":"x"}},{"id":"10","data":{"name":"y"}}]`, 10},
+		{"非法 status", `[{"id":"10","status":"gone","data":{"name":"x"}}]`, 0},
+		{"缺 id", `[{"data":{"name":"x"}}]`, 0},
+		{"未知字段", `[{"id":"10","data":{"name":"x","typo":1}}]`, 0},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -160,6 +161,9 @@ func TestA5_ImportValidationRollback(t *testing.T) {
 			e := mustAE(t, err)
 			require.Equal(t, 422, e.HTTP, tc.name)
 			require.Equal(t, "VALIDATION_ERROR", e.Code, tc.name)
+			if tc.dupID > 0 {
+				require.Equal(t, tc.dupID, e.Detail["duplicate_id"], tc.name)
+			}
 			// 原数据未动（事务回滚）
 			got, err := dsvc.Get(ctx, "va_item", keep.ID)
 			require.NoError(t, err)

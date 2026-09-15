@@ -179,8 +179,11 @@ func TestA2_DataNotFound(t *testing.T) {
 	require.NoError(t, err)
 
 	_, err = dsvc.Get(ctx, "nf_item", 999999)
-	require.Equal(t, 404, mustAE(t, err).HTTP)
-	require.Equal(t, "DATA_NOT_FOUND", mustAE(t, err).Code)
+	nf := mustAE(t, err)
+	require.Equal(t, 404, nf.HTTP)
+	require.Equal(t, "DATA_NOT_FOUND", nf.Code)
+	require.Equal(t, "nf_item", nf.Detail["type_name"]) // 404 回显定位坐标
+	require.EqualValues(t, 999999, nf.Detail["id"])
 
 	_, err = dsvc.Update(ctx, "nf_item", 999999, service.UpdateInput{Version: 1}, "system")
 	require.Equal(t, "DATA_NOT_FOUND", mustAE(t, err).Code)

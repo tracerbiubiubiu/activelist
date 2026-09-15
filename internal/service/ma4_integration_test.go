@@ -177,6 +177,7 @@ func TestA3_EvolveConflictAndDeprecated(t *testing.T) {
 	require.Equal(t, 409, e.HTTP)
 	require.Equal(t, "CONFLICT", e.Code)
 	require.EqualValues(t, 9, e.Detail["expected_version"])
+	require.EqualValues(t, 1, e.Detail["current_version"]) // 现态版本回显，调用方可直接重读重提
 
 	def, err := tsvc.Evolve(ctx, "ev_lock", service.EvolveInput{
 		Fields: append(ma4Fields(), meta.Field{Name: "tag", Type: "string"}), Version: 1}, "system")
@@ -191,7 +192,9 @@ func TestA3_EvolveConflictAndDeprecated(t *testing.T) {
 	_, err = tsvc.Deprecate(ctx, "ev_lock", "system")
 	require.NoError(t, err)
 	_, err = tsvc.Evolve(ctx, "ev_lock", service.EvolveInput{Fields: ma4Fields(), Version: 2}, "system")
-	require.Equal(t, "TYPE_DEPRECATED", mustAE(t, err).Code)
+	de := mustAE(t, err)
+	require.Equal(t, "TYPE_DEPRECATED", de.Code)
+	require.Equal(t, "deprecated", de.Detail["current_status"])
 }
 
 // A3⑤ 变更历史：register/evolve/deprecate 三 op 齐全、新→旧排序、未知类型 404。

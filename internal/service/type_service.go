@@ -42,7 +42,7 @@ func (s *TypeService) Register(ctx context.Context, in RegisterInput, operator s
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 
-	if err := meta.InsertType(ctx, tx, in.TypeName, in.Fields, operator); err != nil {
+	if err := meta.InsertType(ctx, tx, s.pool, in.TypeName, in.Fields, operator); err != nil {
 		return nil, err
 	}
 	if err := repository.CreateTableIfNotExists(ctx, tx, in.TypeName); err != nil {
@@ -78,7 +78,7 @@ func (s *TypeService) Evolve(ctx context.Context, typeName string, in EvolveInpu
 	}
 	if cur.Status == meta.StatusDeprecated {
 		return nil, apperr.New(409, apperr.CodeTypeDepr, "类型已废弃，拒绝演进: "+typeName).
-			WithDetail("type_name", typeName)
+			WithDetail("type_name", typeName).WithDetail("current_status", cur.Status)
 	}
 
 	tx, err := s.pool.Begin(ctx)
@@ -92,8 +92,22 @@ func (s *TypeService) Evolve(ctx context.Context, typeName string, in EvolveInpu
 		return nil, err
 	}
 	if !moved {
-		return nil, apperr.New(409, apperr.CodeConflict, "schema 版本不匹配（已被并发演进/废弃），须重读最新定义后重提").
-			WithDetail("expected_version", in.Version).WithDetail("type_name", typeName)
+		// CAS 0 行有两种成因（WHERE version=$ AND status='active'）：锁内重读区分，
+		// 避免调用方在「重试演进」与「类型已终态」之间无法判断。
+		latest, err := meta.GetByName(ctx, tx, typeName)
+		if err != nil {
+			return nil, err
+		}
+		if latest.Status == meta.StatusDeprecated {
+			return nil, apperr.New(409, apperr.CodeTypeDepr,
+				"类型在演进提交前已被并发废弃，拒绝演进: "+typeName).
+				WithDetail("type_name", typeName).WithDetail("current_status", latest.Status)
+		}
+		return nil, apperr.New(409, apperr.CodeConflict,
+			"schema 版本不匹配（已被并发演进推进），须重读最新定义后重提").
+			WithDetail("type_name", typeName).
+			WithDetail("expected_version", in.Version).
+			WithDetail("current_version", latest.Version)
 	}
 	if err := meta.InsertHistory(ctx, tx, typeName, "evolve", in.Fields, operator); err != nil {
 		return nil, err

@@ -70,8 +70,9 @@ func scanDoc(row pgx.Row) (*Document, error) {
 	return &d, nil
 }
 
-func notFound() *apperr.Error {
-	return apperr.New(404, apperr.CodeDataNotFound, "数据不存在")
+func notFound(typeName string, id int64) *apperr.Error {
+	return apperr.New(404, apperr.CodeDataNotFound, "数据不存在").
+		WithDetail("type_name", typeName).WithDetail("id", id)
 }
 
 // InsertDoc 插入数据行（version 落列默认 1；operator 空串 COALESCE 回退 'system'
@@ -95,7 +96,7 @@ func GetDocByID(ctx context.Context, q dbtx, typeName string, id int64) (*Docume
 	d, err := scanDoc(q.QueryRow(ctx,
 		`SELECT `+docCols+` FROM "`+typeName+`" WHERE id = $1`, id))
 	if errors.Is(err, pgx.ErrNoRows) {
-		return nil, notFound()
+		return nil, notFound(typeName, id)
 	}
 	if err != nil {
 		return nil, apperr.New(500, apperr.CodeInternal, "查询数据失败")
@@ -109,7 +110,7 @@ func GetDocForUpdate(ctx context.Context, q dbtx, typeName string, id int64) (*D
 	d, err := scanDoc(q.QueryRow(ctx,
 		`SELECT `+docCols+` FROM "`+typeName+`" WHERE id = $1 FOR UPDATE`, id))
 	if errors.Is(err, pgx.ErrNoRows) {
-		return nil, notFound()
+		return nil, notFound(typeName, id)
 	}
 	if err != nil {
 		if e := errLockWait(err); e != nil {

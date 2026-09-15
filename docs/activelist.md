@@ -698,7 +698,7 @@ Query 接口不能完全透传用户 filter，需做安全处理：
 | `VALIDATION_ERROR` | Schema 校验失败 |
 | `RESERVED_FIELD` | 字段名与保留字段冲突 |
 | `TYPE_NOT_FOUND` | 类型不存在 |
-| `TYPE_ALREADY_EXISTS` | 类型已存在 |
+| `TYPE_ALREADY_EXISTS` | 类型已存在（detail.current_status 区分 `active`/`deprecated`：active 指引走 schema 演进；deprecated 名称永久保留、须换名注册） |
 | `TYPE_DEPRECATED` | 类型已废弃，不可写入 |
 | `DOC_NOT_FOUND` | 文档不存在 |
 | `DOC_DELETED` | 文档已删除 |
@@ -706,7 +706,7 @@ Query 接口不能完全透传用户 filter，需做安全处理：
 | `FIELD_NOT_IN_SCHEMA` | 字段不在任何 Schema 版本中 |
 | `NEW_REQUIRED_FIELD` | 新版 required 字段，需走数据迁移统一升级 |
 | `FIELD_DEPRECATED` | 字段已废弃，不可修改 |
-| `CONFLICT` | 并发冲突，请重试 |
+| `CONFLICT` | 并发冲突，请重试（schema 演进冲突 detail 回显 `expected_version`/`current_version`；若类型在提交前被并发废弃则改升档为 `TYPE_DEPRECATED`） |
 | `INTERNAL_ERROR` | 内部错误 |
 | `DEPENDENCY_UNAVAILABLE` | 依赖服务不可用 |
 

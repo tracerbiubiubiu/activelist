@@ -68,8 +68,10 @@ func (s *DataService) gateType(ctx context.Context, typeName string, forWrite bo
 		return nil, err
 	}
 	if forWrite && def.Status == meta.StatusDeprecated {
-		return nil, apperr.New(409, apperr.CodeTypeDepr, "类型已废弃，拒绝写入: "+typeName).
-			WithDetail("type_name", typeName)
+		return nil, apperr.New(409, apperr.CodeTypeDepr,
+			"类型已废弃，拒绝内容写入: "+typeName+
+				"（仅允许查询、导出及软删/恢复存量数据）").
+			WithDetail("type_name", typeName).WithDetail("current_status", def.Status)
 	}
 	return def, nil
 }

@@ -107,12 +107,14 @@ func TestA1_RegisterLifecycle(t *testing.T) {
 		 WHERE type_name='asset_inventory' AND op='register'`).Scan(&n))
 	require.Equal(t, 1, n)
 
-	// 重复注册 → 409 TYPE_ALREADY_EXISTS
+	// 重复注册 → 409 TYPE_ALREADY_EXISTS；detail 标明当前 active（指引走演进而非重注册）
 	_, err = svc.Register(ctx, service.RegisterInput{
 		TypeName: "asset_inventory",
 		Fields:   []meta.Field{{Name: "x", Type: "int"}}}, "system")
-	require.Equal(t, 409, mustAE(t, err).HTTP)
-	require.Equal(t, "TYPE_ALREADY_EXISTS", mustAE(t, err).Code)
+	ae := mustAE(t, err)
+	require.Equal(t, 409, ae.HTTP)
+	require.Equal(t, "TYPE_ALREADY_EXISTS", ae.Code)
+	require.Equal(t, "active", ae.Detail["current_status"])
 }
 
 // A1 负向：非法输入 422 分档；未知类型 404。
@@ -155,6 +157,17 @@ func TestA1_DeprecateFlow(t *testing.T) {
 	def, err = svc.Deprecate(ctx, "old_kind", "system") // 幂等
 	require.NoError(t, err)
 	require.Equal(t, "deprecated", def.Status)
+
+	// 废弃后同名重新注册 → 仍 409 TYPE_ALREADY_EXISTS（名称永久保留），
+	// detail 标明 deprecated——与 active 重名的指引不同，消息分档
+	reReg, err := svc.Register(ctx, service.RegisterInput{
+		TypeName: "old_kind",
+		Fields:   []meta.Field{{Name: "name", Type: "string"}}}, "system")
+	require.Nil(t, reReg)
+	ae2 := mustAE(t, err)
+	require.Equal(t, 409, ae2.HTTP)
+	require.Equal(t, "TYPE_ALREADY_EXISTS", ae2.Code)
+	require.Equal(t, "deprecated", ae2.Detail["current_status"])
 
 	var n int
 	require.NoError(t, pool.QueryRow(ctx,

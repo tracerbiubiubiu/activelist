@@ -82,11 +82,14 @@ func InsertImportBatch(ctx context.Context, q dbtx, typeName string, docs []Docu
 	}
 	br := q.SendBatch(ctx, batch)
 	defer br.Close()
-	for range docs {
+	for i := range docs {
 		if _, err := br.Exec(); err != nil {
 			var pgErr *pgconn.PgError
 			if errors.As(err, &pgErr) && pgErr.Code == "23505" {
-				return apperr.New(422, apperr.CodeValidation, "导入文件存在重复 id（或与序列冲突）")
+				// 唯一成因 = 文件内 id 重复（导入先清表 + SHARE ROW EXCLUSIVE 锁阻写，
+				// setval 又在最后——不可能与现存行或序列冲突）；回显具体 id 便于定位
+				return apperr.New(422, apperr.CodeValidation, "导入文件存在重复 id").
+					WithDetail("duplicate_id", docs[i].ID)
 			}
 			if e := errLockWait(err); e != nil {
 				return e
