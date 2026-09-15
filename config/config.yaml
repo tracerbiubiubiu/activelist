@@ -9,7 +9,7 @@ postgres:
   host: ${ACTIVELIST_PG_HOST:-127.0.0.1}
   port: ${ACTIVELIST_PG_PORT:-5432}
   user: ${ACTIVELIST_PG_USER:-activelist}
-  password: ${ACTIVELIST_PG_PASSWORD:-activelist}
+  password: ${ACTIVELIST_PG_PASSWORD:-activelist}  # 缺省仅开发态（与 compose.dev 的 PG 口令一致）；生产务必 env 注入
   dbname: ${ACTIVELIST_PG_DBNAME:-activelist}
   max_open_conns: 10         # 多实例按 副本数 × max_open_conns < PG max_connections 估算
 

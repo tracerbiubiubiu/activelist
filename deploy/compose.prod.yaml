@@ -5,11 +5,11 @@
 # zhuzhao 网关容器须加入同一网络）；PG 仅内网。apiserver 无状态，deploy.replicas=2 多副本
 #（迁移自带会话级 advisory lock，并发启动安全——A7）。
 #
-# 环境变量（.env 或 export）：
-#   ACTIVELIST_CALLER_ZHUZHAO_SK  zhuzhao 网关出站签名 SK（与网关侧 GATEWAY_SK 同值）。
-#                                 compose 缺省 dev-gateway-sk（=zhuzhao dev 同值）仅供本地
-#                                 起栈，生产务必 env 覆盖；应用对空 SK fail-closed 拒启
-#   ACTIVELIST_PG_PASSWORD        PG 口令（必需，缺失拒建）
+# 环境变量（.env 或 export）——两项均必填，缺失 compose 直接报错拒建（fail-closed）：
+#   ACTIVELIST_CALLER_ZHUZHAO_SK  zhuzhao 网关出站签名 SK（与网关侧 GATEWAY_SK 同值）；
+#                                 应用层对空 SK 亦 fail-closed 拒启——不给弱缺省值，
+#                                 防止生产忘配 env 时以公开弱密钥启动、验签形同虚设
+#   ACTIVELIST_PG_PASSWORD        PG 口令
 #
 # 备份策略：每日 02:00 pg_dump（pgbackup 服务，保留 14 份）+ WAL 归档（archive_timeout
 # 5 分钟）；恢复步骤见 deploy/backup/README.md。
@@ -27,8 +27,10 @@ services:
       - postgres
       - -c
       - archive_mode=on
+      # 覆盖语义（2026-09-15 复查修正）：崩溃残留的半截同名段会被重归档完整重写；
+      # 原 test ! -f 守卫会把残留当「已归档」永久跳过——PITR 时该段静默损坏
       - -c
-      - archive_command=test ! -f /wal_archive/%f && cp %p /wal_archive/%f
+      - archive_command=cp %p /wal_archive/%f
       - -c
       - archive_timeout=300s
     volumes:
@@ -49,7 +51,7 @@ services:
     build: ..
     image: activelist-apiserver:latest
     environment:
-      ACTIVELIST_CALLER_ZHUZHAO_SK: ${ACTIVELIST_CALLER_ZHUZHAO_SK:-dev-gateway-sk} # 本地演示默认与 zhuzhao dev-gateway-sk 同值；生产务必经 env 覆盖
+      ACTIVELIST_CALLER_ZHUZHAO_SK: ${ACTIVELIST_CALLER_ZHUZHAO_SK:?需注入 ACTIVELIST_CALLER_ZHUZHAO_SK（与 zhuzhao 网关侧 GATEWAY_SK 同值）}
       ACTIVELIST_PG_HOST: postgres
       ACTIVELIST_PG_PORT: "5432"
       ACTIVELIST_PG_PASSWORD: ${ACTIVELIST_PG_PASSWORD:?需注入 ACTIVELIST_PG_PASSWORD}

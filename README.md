@@ -39,9 +39,9 @@
 # 0. 预建跨 compose 共享网络（zhuzhao 网关容器须加入同一网络）
 docker network create zhuzhao_to_activelist
 
-# 1. 注入密钥（SK 可省略：compose 缺省 dev-gateway-sk = zhuzhao dev 同值，仅限本地；
-#    生产务必注入真实值。应用对空 SK fail-closed 拒启）
-# export ACTIVELIST_CALLER_ZHUZHAO_SK=<与 zhuzhao 网关侧 GATEWAY_SK 同值>
+# 1. 注入密钥（两项均必填：缺失 compose 直接报错拒建，不给弱缺省值。
+#    SK 须与 zhuzhao 网关侧 GATEWAY_SK 同值；应用层对空 SK 亦 fail-closed 拒启）
+export ACTIVELIST_CALLER_ZHUZHAO_SK=<与 zhuzhao 网关侧 GATEWAY_SK 同值>
 export ACTIVELIST_PG_PASSWORD=<PG 口令>
 
 # 2. 构建镜像 + 起全栈（PG + apiserver×2 多副本 + 每日备份）
@@ -55,7 +55,7 @@ docker compose -f deploy/compose.prod.yaml exec apiserver \
 #    prefix=/al target=http://activelist:8080；经网关 /al/api/v1/... 访问）
 ```
 
-- 开发态（本地直跑二进制 + 仅 PG 容器）：`deploy/compose.dev.yaml` + `ACTIVELIST_PG_PORT=15432`；
+- 开发态（本地直跑二进制 + 仅 PG 容器）：`deploy/compose.dev.yaml` + `ACTIVELIST_PG_PORT=15432` + `ACTIVELIST_CALLER_ZHUZHAO_SK`（本地任意非空值，如 dev-gateway-sk——空密钥环拒启）；
 - 接口清单 / 配置项：[implementation-plan.md §4/§6](./docs/implementation-plan.md)；
 - **备份与恢复**：[deploy/backup/README.md](./deploy/backup/README.md)（每日 pg_dump + WAL 归档，保留 14 份）。
 
