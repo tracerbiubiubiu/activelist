@@ -1,5 +1,5 @@
 // 数据 CRUD 端点（M-A3；A2/A4）。薄层：绑定/游标解析/状态码映射，业务在 service。
-// 鉴权随 M-A6 AK/SK 中间件（当前 /api/v1 仅限内网开发态调用）。
+// 鉴权 = AKSKAuth 中间件（Callers 非空时挂载；空密钥环 wire 层拒绝启动 fail-closed）。
 package handler
 
 import (

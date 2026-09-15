@@ -28,7 +28,7 @@
 | A2 | CRUD | 插入/按 id 查/更新/软删/恢复全通；软删后默认不可见、更新 409、重复软删幂等；恢复后可写 |
 | A3 | Schema 演进 | 加 optional 字段后旧数据零迁移可读可写；加 required 字段后新插入强制校验、旧数据更新返回 422（错误信息含迁移指引） |
 | A4 | 乐观锁 | 并发更新同一行 → 恰一成功，其余 409；version 不匹配更新 409 |
-| A5 | 导入导出 | 导出 JSON（含 id / status / created_at）→ 清空环境 → 导入 → 数据一致；**重导同一文件结果一致（幂等）**；序列正确（后续插入不冲突）；导入期间并发写：短阻塞（事务级 `SET LOCAL lock_timeout` 5s）后等至提交或快速 409，并发导入按类型互斥（表锁 / advisory lock） |
+| A5 | 导入导出 | 导出完整文档 JSON 数组（含软删行）→ 清空环境 → 导入 → 数据一致；**重导同一文件结果一致（幂等）**；序列正确（后续插入不冲突）；导入期间并发写：短阻塞（事务级 `SET LOCAL lock_timeout` 5s）后等至提交或快速 409，并发导入按类型互斥（表锁 / advisory lock） |
 | A6 | 日志 | 请求级 + 错误级日志含 `X-Request-ID` 与 `X-Operator`；**脱敏暂不做**（已拍板，预留 schema `sensitive` 标记 + 统一日志出口钩子，见 ADR-003 审计节）；不记业务语义内容 |
 | A7 | 部署 | docker-compose 双 network（`activelist_internal` + `zhuzhao_to_activelist`）、**apiserver 双副本**；`/healthz` `/readyz`（readyz 检 PG）；优雅停止（SIGTERM 排空，重启单副本服务不中断）；**migrations 全库只执行一次**（随启动执行，工具 = **golang-migrate** iofs embed，postgres 驱动自带会话级 advisory lock，多副本并发启动不重复执行）；备份任务按日跑通 |
 | A8 | AK/SK 验签 | 缺/错签名 → 401；密钥环空（或含空 SK）拒绝启动（fail-closed）；`X-Operator` 在签名覆盖内（不可伪造） |
@@ -73,12 +73,12 @@
 | POST | `/api/v1/data/:typeName/:id/update` | 更新（body 携带 version，乐观锁） |
 | POST | `/api/v1/data/:typeName/:id/delete` | 软删除 |
 | POST | `/api/v1/data/:typeName/:id/restore` | 恢复软删数据（最终画像「高危数据误删可恢复」） |
-| GET | `/api/v1/data/:typeName/export` | 导出 JSON（含 id / status / created_at；含软删行——否则导出→导入会丢失软删数据） |
+| GET | `/api/v1/data/:typeName/export` | 全量导出 JSON 数组（流式；完整文档，含软删行——否则导出→导入会丢失软删数据） |
 | POST | `/api/v1/data/:typeName/import` | 全量替换导入（与导出同构的 JSON 数组 body；响应返回批次汇总：行数/耗时/max id） |
 
 ~~`GET /api/v1/data/:typeName/:id/history`~~ — 移除（数据变更历史 = 审计，归 zhuzhao）。
 
-**错误码**：沿用 activelist.md §6.8（`{code, msg, data, detail.error_code}` 统一包装）；`FIELD_DEPRECATED` / `NEW_REQUIRED_FIELD`（懒执行提示迁移）/ `CONFLICT` 语义保持。
+**错误码**：现行信封 = standards §3.3 `{code, message, data, request_id}`（数值业务码映射见 zhuzhao 仓 `docs/api/errcode.md` §4——`VALIDATION_ERROR`→100000→HTTP 422 等）；`FIELD_DEPRECATED` / `NEW_REQUIRED_FIELD`（懒执行提示迁移）/ `CONFLICT` 语义保持。
 
 ## 5. 代码目录结构（预定）
 
