@@ -16,7 +16,7 @@ RUN apk add --no-cache ca-certificates tzdata \
  && adduser -D -u 10001 -G app app
 WORKDIR /app
 COPY --from=build /out/apiserver /app/apiserver
-COPY config/config.yaml /app/config/config.yaml
+COPY configs/config.yaml /app/config/config.yaml
 # 日志目录（utils logger 惰性建目录——uid 10001 在 root 属主的 /app 下无权创建，
 # 且 MultiWriter 文件先行会短路 stdout：缺此行 = 部署态全部日志静默丢失）
 RUN mkdir -p /app/logs && chown -R app:app /app

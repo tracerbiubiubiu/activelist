@@ -49,7 +49,7 @@ func TestA2_CRUDLifecycle(t *testing.T) {
 	doc := insertDoc(t, dsvc, "inv_item", 1, "a")
 	require.Positive(t, doc.ID)
 	require.EqualValues(t, 1, doc.Version)
-	require.Equal(t, repository.StatusActive, doc.Status)
+	require.Equal(t, repository.RowStatusActive, doc.Status)
 	require.Equal(t, "system", doc.CreatedBy)
 	require.Equal(t, "a", doc.Data["name"])
 	require.Equal(t, []any{"ta"}, doc.Data["tags"])
@@ -126,7 +126,7 @@ func TestA2_SoftDeleteFlow(t *testing.T) {
 
 	del, err := dsvc.SoftDelete(ctx, "soft_item", doc.ID, "system")
 	require.NoError(t, err)
-	require.Equal(t, repository.StatusDeleted, del.Status)
+	require.Equal(t, repository.RowStatusDeleted, del.Status)
 	require.EqualValues(t, 2, del.Version) // 状态迁移同样递增版本（旧文档立即过期）
 
 	// 列表排除软删行
@@ -137,7 +137,7 @@ func TestA2_SoftDeleteFlow(t *testing.T) {
 	// 单查可见（审计对账与恢复入口）
 	got, err := dsvc.Get(ctx, "soft_item", doc.ID)
 	require.NoError(t, err)
-	require.Equal(t, repository.StatusDeleted, got.Status)
+	require.Equal(t, repository.RowStatusDeleted, got.Status)
 
 	// 软删行更新 409
 	_, err = dsvc.Update(ctx, "soft_item", doc.ID, service.UpdateInput{
@@ -149,12 +149,12 @@ func TestA2_SoftDeleteFlow(t *testing.T) {
 	again, err := dsvc.SoftDelete(ctx, "soft_item", doc.ID, "system")
 	require.NoError(t, err)
 	require.Equal(t, del.Version, again.Version)
-	require.Equal(t, repository.StatusDeleted, again.Status)
+	require.Equal(t, repository.RowStatusDeleted, again.Status)
 
 	// 恢复 → active、版本 +1、可写
 	res, err := dsvc.Restore(ctx, "soft_item", doc.ID, "system")
 	require.NoError(t, err)
-	require.Equal(t, repository.StatusActive, res.Status)
+	require.Equal(t, repository.RowStatusActive, res.Status)
 	require.EqualValues(t, 3, res.Version)
 
 	upd, err := dsvc.Update(ctx, "soft_item", doc.ID, service.UpdateInput{
@@ -166,7 +166,7 @@ func TestA2_SoftDeleteFlow(t *testing.T) {
 	res2, err := dsvc.Restore(ctx, "soft_item", doc.ID, "system")
 	require.NoError(t, err)
 	require.Equal(t, upd.Version, res2.Version)
-	require.Equal(t, repository.StatusActive, res2.Status)
+	require.Equal(t, repository.RowStatusActive, res2.Status)
 }
 
 // A2/A4 负向：数据行不存在 404（DATA_NOT_FOUND）；类型不存在 404（TYPE_NOT_FOUND）。
@@ -296,7 +296,7 @@ func TestA1_DeprecatedTypeRejectsWrite(t *testing.T) {
 	// 生命周期操作放行
 	del, err := dsvc.SoftDelete(ctx, "legacy_item", doc.ID, "system")
 	require.NoError(t, err)
-	require.Equal(t, repository.StatusDeleted, del.Status)
+	require.Equal(t, repository.RowStatusDeleted, del.Status)
 }
 
 // HTTP 层 e2e：信封形状 / 游标成对 400 / 分页钳制回显 / 全链软删-恢复。

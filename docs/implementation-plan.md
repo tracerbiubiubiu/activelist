@@ -97,7 +97,7 @@ activelist/
 │   ├── middleware/            # requestid / 技术 access 日志（统一出口）/ AK-SK 验签
 │   └── app/                   # **Wire DI** + 装配、启动、优雅停止（对齐 zhuzhao/taskrunner）
 ├── migrations/                # 独立库独立编号（000001 起；与 zhuzhao 迁移号无关）
-├── config/config.yaml
+├── configs/config.yaml
 ├── deploy/
 │   ├── compose.prod.yaml      # 部署态：PG + apiserver×2 + pgbackup；双 network，apiserver 仅对 zhuzhao network 暴露 8080
 │   └── compose.dev.yaml       # 开发态：仅 PG（apiserver 本地直跑）

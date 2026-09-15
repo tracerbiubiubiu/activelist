@@ -2,7 +2,7 @@
 //
 // 用法：
 //
-//	apiserver serve [config.yaml]   # 常驻服务（默认读 config/config.yaml；纯 env 亦可）
+//	apiserver serve [config.yaml]   # 常驻服务（默认读 configs/config.yaml；纯 env 亦可）
 package main
 
 import (
@@ -15,7 +15,7 @@ import (
 
 func main() {
 	args := os.Args[1:]
-	path := "config/config.yaml"
+	path := "configs/config.yaml"
 	if len(args) > 1 {
 		path = args[1]
 	}

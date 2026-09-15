@@ -157,7 +157,7 @@ func (s *DataService) Update(ctx context.Context, typeName string, id int64, in 
 	if err != nil {
 		return nil, err
 	}
-	if doc.Status != repository.StatusActive {
+	if doc.Status != repository.RowStatusActive {
 		return nil, apperr.New(409, apperr.CodeConflict, "数据已软删，须先恢复再更新").
 			WithDetail("id", id).WithDetail("status", doc.Status)
 	}
@@ -203,9 +203,9 @@ func (s *DataService) SoftDelete(ctx context.Context, typeName string, id int64,
 	if err != nil {
 		return nil, err
 	}
-	if doc.Status == repository.StatusActive {
+	if doc.Status == repository.RowStatusActive {
 		nd, moved, err := repository.UpdateDocStatus(ctx, tx, def.TypeName, id,
-			repository.StatusActive, repository.StatusDeleted, operator)
+			repository.RowStatusActive, repository.RowStatusDeleted, operator)
 		if err != nil {
 			return nil, err
 		}
@@ -238,9 +238,9 @@ func (s *DataService) Restore(ctx context.Context, typeName string, id int64, op
 	if err != nil {
 		return nil, err
 	}
-	if doc.Status == repository.StatusDeleted {
+	if doc.Status == repository.RowStatusDeleted {
 		nd, moved, err := repository.UpdateDocStatus(ctx, tx, def.TypeName, id,
-			repository.StatusDeleted, repository.StatusActive, operator)
+			repository.RowStatusDeleted, repository.RowStatusActive, operator)
 		if err != nil {
 			return nil, err
 		}
@@ -362,9 +362,9 @@ func (s *DataService) Import(ctx context.Context, typeName string, r io.Reader, 
 				return apperr.New(422, apperr.CodeValidation, "导入行缺少正整数 id（全量替换保留源 id）")
 			}
 			if d.Status == "" {
-				d.Status = repository.StatusActive
+				d.Status = repository.RowStatusActive
 			}
-			if d.Status != repository.StatusActive && d.Status != repository.StatusDeleted {
+			if d.Status != repository.RowStatusActive && d.Status != repository.RowStatusDeleted {
 				return apperr.New(422, apperr.CodeValidation, "导入行 status 非法（active|deleted）").
 					WithDetail("id", d.ID).WithDetail("status", d.Status)
 			}

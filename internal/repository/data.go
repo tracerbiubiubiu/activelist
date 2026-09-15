@@ -18,11 +18,12 @@ import (
 	"github.com/tracerbiubiubiu/activelist/internal/apperr"
 )
 
-// 数据行 status 两态（与 meta.StatusActive/Deprecated 的「类型状态」相互独立：
-// 类型废弃不改变存量行状态，只挡新写入）。
+// 数据行 RowStatus 两态（与 meta.StatusActive/Deprecated 的「类型状态」相互独立：
+// 类型废弃不改变存量行状态，只挡新写入）。2026-09-15 由 Status* 改名消歧——
+// service 层同时引 meta 与 repository 两包，限定名自描述（standards §4 命名约定批）。
 const (
-	StatusActive  = "active"
-	StatusDeleted = "deleted"
+	RowStatusActive  = "active"
+	RowStatusDeleted = "deleted"
 )
 
 // dbtx 数据通道最小接口（*pgxpool.Pool 与 pgx.Tx 均满足）。
@@ -167,7 +168,7 @@ func UpdateDocStatus(ctx context.Context, q dbtx, typeName string, id int64, fro
 // keyset 游标按完整排序键比较、LIMIT 硬上限（offset 深翻页在百万行下不可用，不提供）。
 func ListDocs(ctx context.Context, q dbtx, typeName string, cur *Cursor, limit int) ([]Document, error) {
 	sql := `SELECT ` + docCols + ` FROM "` + typeName + `" WHERE status = $1`
-	args := []any{StatusActive}
+	args := []any{RowStatusActive}
 	if cur != nil {
 		sql += ` AND (created_at, id) < ($2, $3)`
 		args = append(args, cur.CreatedAt, cur.ID)

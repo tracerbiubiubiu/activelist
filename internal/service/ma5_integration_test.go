@@ -61,7 +61,7 @@ func TestA5_ExportImportRoundTrip(t *testing.T) {
 	require.Len(t, exported, 2) // 含软删行（2 行：1 更新 + 1 软删）
 	hasDeleted := false
 	for _, d := range exported {
-		if d.Status == repository.StatusDeleted {
+		if d.Status == repository.RowStatusDeleted {
 			hasDeleted = true
 		}
 	}

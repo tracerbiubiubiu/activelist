@@ -1646,7 +1646,7 @@ Worker 从 snapshot.updatedBy / snapshot.createdBy 读取 operator
 
 ### 18.4 配置管理
 
-配置文件 `config/config.yaml`，参考 zhuzhao 的 `${VAR:-default}` 环境变量化模式：
+配置文件 `configs/config.yaml`（2026-09-15 由 `config/` 改名对齐 standards §4 目录骨架），参考 zhuzhao 的 `${VAR:-default}` 环境变量化模式：
 
 ```yaml
 server:
