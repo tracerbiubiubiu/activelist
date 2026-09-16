@@ -137,7 +137,7 @@ col_<type>(
 
 - ✅ 10 包齐备（aksk / crypto / errcode / jsonutil / jwt / logger / postgres / redis / response / validate），module = `github.com/tracerbiubiubiu/zhuzhao-utils`，已推送远端。
 - ✅ `logger`（`logger.New(logger.Config)` → `*slog.Logger`，自带 Config，无 zhuzhao config 耦合）、`postgres`（`postgres.New(postgres.Config)` → `*pgxpool.Pool` + cleanup，`ApplyDefaults`/`DSN`/statement_timeout/application_name 齐备）——activelist 可直接使用。
-- ✅ `errcode`/`response` API 满足统一响应包装（`OK/OKPage/Fail/Error/Conflict/...`；activelist 的 `detail.error_code` 字段自行适配）。
+- ✅ `errcode`/`response` API 满足统一响应包装（`OK/OKPage/Fail/Error/Conflict/...`；~~activelist 的 `detail.error_code` 字段自行适配~~ ⚠️ **已过时（2026-09-16 注）**：detail 字段随 2026-09-08 信封收敛消亡——现行信封 `{code,message,data,request_id}`，结构化上下文折叠进 message，见 activelist.md 错误码对账注）。
 - ✅ zhuzhao 主仓已切换 import；`internal/pkg/errcode` 为**转发 shim**（业务码 20000 起留 zhuzhao、框架码进 utils、类型别名统一——有意分层，非双份维护）；`internal/pkg/resource` 留 zhuzhao（权限域绑定，activelist 无用户权限判定不需要）。另：utils 已含 `aksk` 包（2026-09-03 AK/SK 基线修订新增，M-A6 验签中间件依赖已就绪）。
 - ⚠️ 遗留（不阻塞，utils 侧可选补充）：① `logger` / `postgres` 无单测（其余包有）；② `postgres.Config` 可加 `LockTimeout` 字段（activelist 导入期间的常规写快速失败需要；不加则 activelist 以会话级 `SET lock_timeout` 自理）。
 

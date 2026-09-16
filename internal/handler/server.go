@@ -17,8 +17,8 @@ import (
 	"github.com/tracerbiubiubiu/activelist/internal/validation"
 )
 
-// operatorFallback X-Operator 缺省值（AKSKAuth+Operator 中间件缺头时的兜底，
-// 对齐 16 号 §9 访问日志 operator 口径）。
+// operatorFallback X-Operator 缺省值（直连开发态未挂验签时的兜底；验签态的 ctx
+// operator 由 utils GinMiddleware 验签通过后写入，缺省同值——对齐 16 号 §9 口径）。
 const operatorFallback = "system"
 
 // currentOperator 取经签名校验透传的操作者；直连开发态（未挂验签）回退 system。
@@ -30,8 +30,9 @@ func currentOperator(c *gin.Context) string {
 }
 
 // Deps handler 依赖。Ready 为 readyz 探针（检 PG 可查询）；nil = 恒就绪（测试用）。
-// Callers 为 AK/SK 验签密钥环（AK→SK）：非空时 /api/v1 挂验签 + Operator 中间件
-// （M-A6），为空时不挂（内网开发态/测试构造）；生产装配在 app 层对空环 fail-closed。
+// Callers 为 AK/SK 验签密钥环（AK→SK）：非空时 /api/v1 挂验签（M-A6；2026-09-16
+// 验签统一批：失败响应与归因由 utils aksk.GinMiddleware + response.AKSKFail() 承接），
+// 为空时不挂（内网开发态/测试构造）；生产装配在 app 层对空环 fail-closed。
 // MaxBodyBytes = 验签读体上限（= cfg.Business.ImportMaxBytes，勿用 aksk 默认 8MB）。
 // Logger 非 nil 时启用统一访问日志出口（16 号 §9）。
 type Deps struct {

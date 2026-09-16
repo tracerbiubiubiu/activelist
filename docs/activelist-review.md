@@ -70,7 +70,7 @@
 
 | # | 位置 | 问题 |
 |---|------|------|
-| M1 | §6.8 | `DEPENDENCY_UNAVAILABLE` 与 HTTP 503 的 `detail.error_code` 对应关系未明示 |
+| M1 | §6.8 | `DEPENDENCY_UNAVAILABLE` 与 HTTP 503 的 `detail.error_code` 对应关系未明示（⚠️ 2026-09-16 注：detail.error_code 概念随 2026-09-08 信封收敛消亡，本条前提已不成立） |
 | M2 | §15.1 | activelist 内部组件（worker/watcher）访问 Mongo/Redis 的认证方式未说 |
 | M3 | §19.7.4 | accesslog 层查 Schema 脱敏的性能开销未评估（每次请求查一次 Schema） |
 | M4 | §6.2 | 并发 Insert 同一自定义 `_id` 的冲突响应未明确 |
