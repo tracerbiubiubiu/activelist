@@ -59,7 +59,7 @@ func AccessLog(logger *slog.Logger) gin.HandlerFunc {
 		start := time.Now()
 		params := snapshotParams(c)
 		c.Next()
-		op := c.GetString("operator")
+		op := c.GetString(aksk.ContextKeyOperator)
 		if op == "" {
 			op = "system" // §9：X-Operator 缺失兜底口径
 		}
@@ -75,7 +75,7 @@ func AccessLog(logger *slog.Logger) gin.HandlerFunc {
 			// caller 归因（standards §6：服务间验签场景应含）——utils GinMiddleware
 			// 验签通过后写入 ctx；未挂验签（直连开发态）时为空串，照样出字段保持
 			// 行结构稳定
-			"caller", c.GetString("caller"),
+			"caller", c.GetString(aksk.ContextKeyCaller),
 		)
 
 		// 错误级出口（A6）：消费 c.Errors——当前唯一来源是 export 流中途截断

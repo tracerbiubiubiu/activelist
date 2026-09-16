@@ -10,6 +10,8 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"github.com/tracerbiubiubiu/zhuzhao-utils/aksk"
+
 	"github.com/tracerbiubiubiu/activelist/internal/apperr"
 	"github.com/tracerbiubiubiu/activelist/internal/meta"
 	"github.com/tracerbiubiubiu/activelist/internal/middleware"
@@ -23,7 +25,7 @@ const operatorFallback = "system"
 
 // currentOperator 取经签名校验透传的操作者；直连开发态（未挂验签）回退 system。
 func currentOperator(c *gin.Context) string {
-	if v := c.GetString("operator"); v != "" {
+	if v := c.GetString(aksk.ContextKeyOperator); v != "" {
 		return v
 	}
 	return operatorFallback

@@ -31,7 +31,7 @@ func newAuthEngine(callers map[string][]byte, maxBody int64) (*gin.Engine, *stri
 	r := gin.New()
 	r.Use(RequestID(), AKSKAuth(callers, maxBody, nil))
 	r.GET("/ping", func(c *gin.Context) {
-		op = c.GetString("operator")
+		op = c.GetString(aksk.ContextKeyOperator)
 		rid = c.GetString("request_id")
 		c.String(http.StatusOK, "pong")
 	})
