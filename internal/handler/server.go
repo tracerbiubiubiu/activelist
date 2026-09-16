@@ -64,11 +64,11 @@ func New(d Deps) *gin.Engine {
 		c.JSON(http.StatusOK, gin.H{"status": "ready"})
 	})
 
-	// 类型管理（M-A2；A1）。M-A6：Callers 非空时 /api/v1 走 AK/SK 验签 +
-	// X-Operator 透传（验签失败请求到不了 handler）。
+	// 类型管理（M-A2；A1）。M-A6：Callers 非空时 /api/v1 走 AK/SK 验签（2026-09-16
+	// 统一批：AKSKFail 统一失败响应 + caller/operator 归因由 GinMiddleware 写入）。
 	v1 := r.Group("/api/v1")
 	if len(d.Callers) > 0 {
-		v1.Use(middleware.AKSKAuth(d.Callers, d.MaxBodyBytes), middleware.Operator())
+		v1.Use(middleware.AKSKAuth(d.Callers, d.MaxBodyBytes, d.Logger))
 	}
 	{
 		types := v1.Group("/admin/types")

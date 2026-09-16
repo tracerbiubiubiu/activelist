@@ -1,15 +1,13 @@
 // middleware 中间件：RequestID / AccessLog（M-A6 统一访问日志出口）/
-// AKSKAuth + Operator（M-A6 服务间验签，16 号 §9 服务鉴权基线）。
+// AKSKAuth（M-A6 服务间验签，16 号 §9 服务鉴权基线）。
 package middleware
 
 import (
 	"bytes"
 	"crypto/rand"
 	"encoding/hex"
-	"errors"
 	"io"
 	"log/slog"
-	"net/http"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -36,38 +34,17 @@ func RequestID() gin.HandlerFunc {
 // X-Request-ID / X-Operator——「明文 X-Operator 入签名覆盖」2026-09-03 基线）。
 // callers = 验签密钥环（AK→SK，当前唯一调用方 zhuzhao）；maxBodyBytes = 读体上限
 // （传 cfg.Business.ImportMaxBytes——导入可达 1GiB，勿用 aksk 默认 8MB）。
-// 失败按 standards §3.3 信封响应：401+10002 / 413+10001 / 400+10001（通用段）。
+// 失败响应与归因由 utils 统一承接（2026-09-16 服务间验签统一批）：onFail=
+// response.AKSKFail()（信封 + 分档中文文案）；验签通过后 caller/operator 由
+// GinMiddleware 写入 ctx（原独立 Operator 中间件退役）。
 // 空密钥环 = 全部请求 401（请求级 fail-closed；启动级在 app.InitializeApp）。
-func AKSKAuth(callers map[string][]byte, maxBodyBytes int64) gin.HandlerFunc {
+func AKSKAuth(callers map[string][]byte, maxBodyBytes int64, logger *slog.Logger) gin.HandlerFunc {
 	keys := callers
 	if keys == nil {
 		keys = map[string][]byte{}
 	}
-	v := &aksk.Verifier{Keys: keys, MaxBodyBytes: maxBodyBytes}
-	onFail := func(c *gin.Context, err error) {
-		switch {
-		case errors.Is(err, aksk.ErrBodyTooLarge):
-			response.Fail(c, http.StatusRequestEntityTooLarge, 10001, "请求体超过验签读体上限")
-		case errors.Is(err, aksk.ErrBodyRead):
-			response.BadRequest(c, "请求体读取失败")
-		default:
-			response.Unauthorized(c, err.Error())
-		}
-	}
-	return aksk.GinMiddleware(v, onFail)
-}
-
-// Operator 签名覆盖透传的 X-Operator → ctx（须挂于 AKSKAuth 之后，未经签名
-// 校验的请求到不了这里）；缺失回退 "system"（对齐 §9 访问日志兜底口径）。
-func Operator() gin.HandlerFunc {
-	return func(c *gin.Context) {
-		op := c.GetHeader("X-Operator")
-		if op == "" {
-			op = "system"
-		}
-		c.Set("operator", op)
-		c.Next()
-	}
+	v := &aksk.Verifier{Keys: keys, MaxBodyBytes: maxBodyBytes, Logger: logger}
+	return aksk.GinMiddleware(v, response.AKSKFail())
 }
 
 // AccessLog 统一访问日志出口（16 号 §9：每请求一行 method/path/status/

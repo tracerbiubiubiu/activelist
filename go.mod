@@ -10,7 +10,7 @@ require (
 	github.com/stretchr/testify v1.12.1
 	github.com/testcontainers/testcontainers-go v0.44.0
 	github.com/testcontainers/testcontainers-go/modules/postgres v0.44.0
-	github.com/tracerbiubiubiu/zhuzhao-utils v0.2.0
+	github.com/tracerbiubiubiu/zhuzhao-utils v0.4.0
 )
 
 require (
@@ -103,3 +103,5 @@ require (
 	google.golang.org/protobuf v1.36.10 // indirect
 	gopkg.in/natefinch/lumberjack.v2 v2.2.1 // indirect
 )
+
+replace github.com/tracerbiubiubiu/zhuzhao-utils => ../zhuzhao-utils

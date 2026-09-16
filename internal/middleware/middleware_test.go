@@ -29,7 +29,7 @@ func newAuthEngine(callers map[string][]byte, maxBody int64) (*gin.Engine, *stri
 	gin.SetMode(gin.ReleaseMode)
 	op, rid := "", ""
 	r := gin.New()
-	r.Use(RequestID(), AKSKAuth(callers, maxBody), Operator())
+	r.Use(RequestID(), AKSKAuth(callers, maxBody, nil))
 	r.GET("/ping", func(c *gin.Context) {
 		op = c.GetString("operator")
 		rid = c.GetString("request_id")
@@ -104,7 +104,7 @@ func TestAKSKAuth_SignedBodyRoundTripsToHandler(t *testing.T) {
 	gin.SetMode(gin.ReleaseMode)
 	got := ""
 	r := gin.New()
-	r.Use(RequestID(), AKSKAuth(map[string][]byte{testAK: []byte(testSK)}, 1<<20), Operator())
+	r.Use(RequestID(), AKSKAuth(map[string][]byte{testAK: []byte(testSK)}, 1<<20, nil))
 	r.POST("/echo", func(c *gin.Context) {
 		b := make([]byte, 64)
 		n, _ := c.Request.Body.Read(b)
