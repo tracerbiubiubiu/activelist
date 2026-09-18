@@ -4,9 +4,15 @@ on:
     branches: ["**"]
   pull_request:
 
+# 连续 push 只跑最新提交（过期 run 自动取消，省 runner 时长）
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   test:
     runs-on: ubuntu-latest
+    timeout-minutes: 15 # testcontainers 挂起时兜底（默认 6h）
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
