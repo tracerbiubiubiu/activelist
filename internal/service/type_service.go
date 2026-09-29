@@ -57,11 +57,13 @@ func (s *TypeService) Register(ctx context.Context, in RegisterInput, operator s
 	return meta.GetByName(ctx, s.pool, in.TypeName)
 }
 
-// EvolveInput schema 演进请求体（POST /api/v1/admin/types/:typeName/schema）。
+// EvolveInput schema 演进请求体（POST /api/v1/admin/types/schema——zhuzhao 风格，
+// type_name 入 body，P4-W5 前置批整改）。
 // 全量定义、非字段级 merge（§7）；version 为元数据行乐观锁。
 type EvolveInput struct {
-	Fields  []meta.Field `json:"fields"`
-	Version int64        `json:"version" binding:"required"`
+	TypeName string       `json:"type_name" binding:"required"`
+	Fields   []meta.Field `json:"fields"`
+	Version  int64        `json:"version" binding:"required"`
 }
 
 // Evolve schema 演进（M-A4；方案 D）：全量定义校验 → [事务：乐观锁替换 + 历史] →

@@ -381,7 +381,8 @@ func TestA3_HTTPEnvelopeData(t *testing.T) {
 	require.Contains(t, w.Body.String(), `"status":"deleted"`)
 
 	w = httptest.NewRecorder()
-	r.ServeHTTP(w, httptest.NewRequest(http.MethodPost, fmt.Sprintf("/api/v1/data/e2e_items/%d/restore", id), nil))
+	r.ServeHTTP(w, httptest.NewRequest(http.MethodPost, "/api/v1/data/restore",
+		strings.NewReader(fmt.Sprintf(`{"type_name":"e2e_items","id":%d}`, id))))
 	require.Equal(t, http.StatusOK, w.Code)
 	require.Contains(t, w.Body.String(), `"status":"active"`)
 

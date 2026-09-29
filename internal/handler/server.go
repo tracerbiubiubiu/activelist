@@ -80,8 +80,10 @@ func New(d Deps) *gin.Engine {
 			types.GET("", d.listTypes)
 			types.GET("/rules", d.typeRules) // 静态优先于 /:typeName
 			types.GET("/:typeName", d.getType)
-			types.POST("/:typeName/deprecate", d.deprecateType)
-			types.POST("/:typeName/schema", d.evolveType)
+			// zhuzhao 风格（standards §3-2，P4-W5 前置批 2026-09-29）：写端点标识入
+			// body、路径无参动词段——deprecate/schema 由 /:typeName 参数段改静态段。
+			types.POST("/deprecate", d.deprecateType)
+			types.POST("/schema", d.evolveType)
 			types.GET("/:typeName/history", d.listTypeHistory)
 		}
 
@@ -93,7 +95,8 @@ func New(d Deps) *gin.Engine {
 			data.GET("/:typeName/:id", d.getData)
 			data.POST("/:typeName/:id/update", d.updateData)
 			data.POST("/:typeName/:id/delete", d.deleteData)
-			data.POST("/:typeName/:id/restore", d.restoreData)
+			// 同上 zhuzhao 风格整改：restore 由 /:typeName/:id 双参数段改 body 携带
+			data.POST("/restore", d.restoreData)
 
 			// 导入导出（M-A5；A5）。export=静态段与 :id 参数同级（gin 静态优先）
 			data.GET("/:typeName/export", d.exportData)
@@ -146,9 +149,16 @@ func (d *Deps) getType(c *gin.Context) {
 	OK(c, def)
 }
 
-// deprecateType 废弃类型（幂等；不存在 404）。
+// deprecateType 废弃类型（幂等；不存在 404）。body={type_name}（zhuzhao 风格）。
 func (d *Deps) deprecateType(c *gin.Context) {
-	def, err := d.Types.Deprecate(c.Request.Context(), c.Param("typeName"), currentOperator(c))
+	var in struct {
+		TypeName string `json:"type_name" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&in); err != nil {
+		BadRequest(c, "请求体解析失败（type_name 必填）")
+		return
+	}
+	def, err := d.Types.Deprecate(c.Request.Context(), in.TypeName, currentOperator(c))
 	if err != nil {
 		Fail(c, asAppErr(err))
 		return
@@ -157,13 +167,14 @@ func (d *Deps) deprecateType(c *gin.Context) {
 }
 
 // evolveType schema 演进（方案 D；不存在 404 / 已废弃 409 / 版本冲突 409 / 非法 422）。
+// body 携带 type_name（zhuzhao 风格——标识与载荷同体）。
 func (d *Deps) evolveType(c *gin.Context) {
 	var in service.EvolveInput
 	if err := c.ShouldBindJSON(&in); err != nil || len(in.Fields) == 0 {
-		BadRequest(c, "请求体解析失败（fields 全量定义与 version 必填）")
+		BadRequest(c, "请求体解析失败（type_name、fields 全量定义与 version 必填）")
 		return
 	}
-	def, err := d.Types.Evolve(c.Request.Context(), c.Param("typeName"), in, currentOperator(c))
+	def, err := d.Types.Evolve(c.Request.Context(), in.TypeName, in, currentOperator(c))
 	if err != nil {
 		Fail(c, asAppErr(err))
 		return

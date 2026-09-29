@@ -237,8 +237,8 @@ func TestA3_HTTPSchemaHistory(t *testing.T) {
 
 	// 演进 200 + 版本递增
 	w = httptest.NewRecorder()
-	r.ServeHTTP(w, httptest.NewRequest(http.MethodPost, "/api/v1/admin/types/ev_e2e/schema",
-		strings.NewReader(`{"fields":[{"name":"name","type":"string","required":true},{"name":"qty","type":"int"}],"version":1}`)))
+	r.ServeHTTP(w, httptest.NewRequest(http.MethodPost, "/api/v1/admin/types/schema",
+		strings.NewReader(`{"type_name":"ev_e2e","fields":[{"name":"name","type":"string","required":true},{"name":"qty","type":"int"}],"version":1}`)))
 	require.Equal(t, http.StatusOK, w.Code)
 	var env struct {
 		Data struct {
@@ -250,8 +250,8 @@ func TestA3_HTTPSchemaHistory(t *testing.T) {
 
 	// 陈旧版本 → 409 CONFLICT
 	w = httptest.NewRecorder()
-	r.ServeHTTP(w, httptest.NewRequest(http.MethodPost, "/api/v1/admin/types/ev_e2e/schema",
-		strings.NewReader(`{"fields":[{"name":"name","type":"string","required":true}],"version":1}`)))
+	r.ServeHTTP(w, httptest.NewRequest(http.MethodPost, "/api/v1/admin/types/schema",
+		strings.NewReader(`{"type_name":"ev_e2e","fields":[{"name":"name","type":"string","required":true}],"version":1}`)))
 	require.Equal(t, http.StatusConflict, w.Code)
 	require.Contains(t, w.Body.String(), `"code":100008`)
 
@@ -274,11 +274,11 @@ func TestA3_HTTPSchemaHistory(t *testing.T) {
 
 	// 未知类型 404 / 非法 body 400
 	w = httptest.NewRecorder()
-	r.ServeHTTP(w, httptest.NewRequest(http.MethodPost, "/api/v1/admin/types/ghost/schema",
-		strings.NewReader(`{"fields":[{"name":"x","type":"int"}],"version":1}`)))
+	r.ServeHTTP(w, httptest.NewRequest(http.MethodPost, "/api/v1/admin/types/schema",
+		strings.NewReader(`{"type_name":"ghost","fields":[{"name":"x","type":"int"}],"version":1}`)))
 	require.Equal(t, http.StatusNotFound, w.Code)
 	w = httptest.NewRecorder()
-	r.ServeHTTP(w, httptest.NewRequest(http.MethodPost, "/api/v1/admin/types/ev_e2e/schema",
+	r.ServeHTTP(w, httptest.NewRequest(http.MethodPost, "/api/v1/admin/types/schema",
 		strings.NewReader(`{"version":2}`)))
 	require.Equal(t, http.StatusBadRequest, w.Code)
 }

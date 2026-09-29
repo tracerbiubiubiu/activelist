@@ -120,13 +120,18 @@ func (d *Deps) deleteData(c *gin.Context) {
 	OK(c, doc)
 }
 
-// restoreData 恢复软删数据（幂等；返回恢复后完整文档）。
+// restoreData 恢复软删数据（幂等；返回恢复后完整文档）。body={type_name,id}
+// （zhuzhao 风格——P4-W5 前置批整改，标识入 body）。
 func (d *Deps) restoreData(c *gin.Context) {
-	id, ok := pathID(c)
-	if !ok {
+	var in struct {
+		TypeName string `json:"type_name" binding:"required"`
+		ID       int64  `json:"id" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&in); err != nil {
+		BadRequest(c, "请求体解析失败（type_name 与 id 必填，id 须为整数）")
 		return
 	}
-	doc, err := d.Data.Restore(c.Request.Context(), c.Param("typeName"), id, currentOperator(c))
+	doc, err := d.Data.Restore(c.Request.Context(), in.TypeName, in.ID, currentOperator(c))
 	if err != nil {
 		Fail(c, asAppErr(err))
 		return
