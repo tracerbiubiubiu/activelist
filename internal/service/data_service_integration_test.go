@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -382,7 +383,7 @@ func TestA3_HTTPEnvelopeData(t *testing.T) {
 
 	w = httptest.NewRecorder()
 	r.ServeHTTP(w, httptest.NewRequest(http.MethodPost, "/api/v1/data/restore",
-		strings.NewReader(fmt.Sprintf(`{"type_name":"e2e_items","id":%d}`, id))))
+		strings.NewReader(fmt.Sprintf(`{"type_name":"e2e_items","id":%q}`, strconv.FormatInt(id, 10)))))
 	require.Equal(t, http.StatusOK, w.Code)
 	require.Contains(t, w.Body.String(), `"status":"active"`)
 
