@@ -125,7 +125,7 @@ func (d *Deps) deleteData(c *gin.Context) {
 func (d *Deps) restoreData(c *gin.Context) {
 	var in struct {
 		TypeName string `json:"type_name" binding:"required"`
-		ID       int64  `json:"id" binding:"required"`
+		ID       int64  `json:"id,string" binding:"required"` // ,string 对齐 Document 导出形态（审计：int64 全 string 纪律）
 	}
 	if err := c.ShouldBindJSON(&in); err != nil {
 		BadRequest(c, "请求体解析失败（type_name 与 id 必填，id 须为整数）")

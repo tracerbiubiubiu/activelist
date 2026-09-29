@@ -36,6 +36,9 @@ var (
 // 将直打元数据表——完整性防线必须在白名单层拦截。
 var reservedTables = map[string]bool{
 	"data_types": true, "data_type_schema_history": true, "schema_migrations": true,
+	// 审计修正（2026-09-30 二轮）：路由静态动词段——注册同名的类型会被 gin 静态
+	// 路由遮蔽（restore 遮蔽插入端点/rules 遮蔽定义读取），形成半残类型
+	"restore": true, "rules": true, "export": true, "import": true, "history": true,
 }
 
 // reservedFields 数据行保留列族（§7）——用户 schema 字段禁用同名。

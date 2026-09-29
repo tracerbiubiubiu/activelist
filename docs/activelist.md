@@ -1335,7 +1335,7 @@ UpdateWithOptimisticLock(id, data, operator):
 
 ```
 1. 管理员 A 提交 Schema 变更
-   POST /api/v1/admin/types/user/schema
+   POST /api/v1/admin/types/schema（body type_name=user）
    {
      "fields": {
        "name": { "type": "string", "required": true },
