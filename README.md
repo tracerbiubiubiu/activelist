@@ -65,5 +65,6 @@ docker compose -f deploy/compose.prod.yaml exec apiserver \
 - 文档就绪：设计收敛定稿 + **实现计划就绪**（[implementation-plan.md](./docs/implementation-plan.md)，M-A 验收标准见其 §2）
 - 代码进度（2026-09-09）：**M-A1–M-A5 已交付**（骨架 / 类型注册 / CRUD / Schema 演进 / 导入导出），**M-A6 代码与部署件完成**（AK/SK 验签 + X-Operator + 统一访问日志 + Dockerfile/部署态 compose/备份；实测随部署批）——详见 implementation-plan 里程碑表
 - 2026-09-16：验签切生态统一形态（utils `GinMiddleware` + `response.AKSKFail()`，归因键常量化）；访问日志补 `caller` 归因字段（pin v0.4.1）
+- 2026-09-29（P4 W5 前置批）：三端点 zhuzhao 风格整改——`/deprecate`·`/schema`·`/restore` 标识入 body 路径静态动词段（zhuzhao 000032 迁移同步 menu_apis；消费面零破坏——网关纯透传）；zhuzhao-ui al 两页（types/data：cursor 分页+动态 schema 列+导入导出）已上线消费（Phase 4 收官）
 - 启动前置 ✅ **已就绪**：zhuzhao-utils **v0.4.1 直引无 replace**（activelist 硬依赖 `logger` + `postgres` + `response` + `aksk`）；**部署 fail-closed**：应用对空 SK 拒启（config 层校验，覆盖 `${VAR:-}` 展开为空的形态）；deploy/compose 带 dev-gateway-sk 缺省便于本地起栈，生产务必 env 覆盖
 - 排期归属：zhuzhao Phase 3 主线 **M-A（activelist 独立实现）**，与其他里程碑无链式依赖（2026-09-02 design-decisions §23.2，详见 ADR-003「排期与集成拆分同步」节）
