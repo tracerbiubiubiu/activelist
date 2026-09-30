@@ -64,6 +64,9 @@ func provideEngine(cfg *config.Config, logger *slog.Logger, types *service.TypeS
 	}
 	return handler.New(handler.Deps{
 		Types: types, Data: data, Ready: ready,
-		Callers: callers, MaxBodyBytes: cfg.Business.ImportMaxBytes, Logger: logger,
+		// 三轮审计（2026-09-30 P2）：验签读体与导入大载荷分离——验签上限 16MB（管理/数据
+		// CRUD 均远低于此），导入端点的 1GiB 上限由 handler 层 MaxBytesReader 独立管控
+		// （data.go:200），不再让未验签请求就能触发全量 1GiB 缓冲
+		Callers: callers, MaxBodyBytes: 16 << 20, Logger: logger,
 	})
 }
