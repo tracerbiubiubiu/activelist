@@ -164,11 +164,16 @@ func UpdateDocStatus(ctx context.Context, q dbtx, typeName string, id int64, fro
 	return d, true, nil
 }
 
-// ListDocs 列表：仅 active 行（软删默认排除）、created_at DESC + id DESC、
-// keyset 游标按完整排序键比较、LIMIT 硬上限（offset 深翻页在百万行下不可用，不提供）。
-func ListDocs(ctx context.Context, q dbtx, typeName string, cur *Cursor, limit int) ([]Document, error) {
-	sql := `SELECT ` + docCols + ` FROM "` + typeName + `" WHERE status = $1`
-	args := []any{RowStatusActive}
+// ListDocs 列表：默认仅 active 行（软删排除），includeDeleted 时 active+deleted 混排；
+// created_at DESC + id DESC、keyset 游标按完整排序键比较（混排下游标语义不变——
+// 排序键与行状态无关）、LIMIT 硬上限（offset 深翻页在百万行下不可用，不提供）。
+func ListDocs(ctx context.Context, q dbtx, typeName string, cur *Cursor, limit int, includeDeleted bool) ([]Document, error) {
+	statuses := []any{RowStatusActive}
+	if includeDeleted {
+		statuses = append(statuses, RowStatusDeleted)
+	}
+	sql := `SELECT ` + docCols + ` FROM "` + typeName + `" WHERE status = ANY($1)`
+	args := []any{statuses}
 	if cur != nil {
 		sql += ` AND (created_at, id) < ($2, $3)`
 		args = append(args, cur.CreatedAt, cur.ID)

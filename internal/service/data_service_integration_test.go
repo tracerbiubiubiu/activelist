@@ -82,7 +82,7 @@ func TestA2_CRUDLifecycle(t *testing.T) {
 	for i := 0; i < 4; i++ {
 		insertDoc(t, dsvc, "inv_item", i+10, fmt.Sprintf("n%d", i))
 	}
-	docs, err := dsvc.List(ctx, "inv_item", nil, 100)
+	docs, err := dsvc.List(ctx, "inv_item", nil, 100, false)
 	require.NoError(t, err)
 	require.Len(t, docs, 5)
 	for i := 1; i < len(docs); i++ {
@@ -95,7 +95,7 @@ func TestA2_CRUDLifecycle(t *testing.T) {
 	var walked []int64
 	var cur *repository.Cursor
 	for {
-		page, err := dsvc.List(ctx, "inv_item", cur, 2)
+		page, err := dsvc.List(ctx, "inv_item", cur, 2, false)
 		require.NoError(t, err)
 		for _, d := range page {
 			walked = append(walked, d.ID)
@@ -131,7 +131,7 @@ func TestA2_SoftDeleteFlow(t *testing.T) {
 	require.EqualValues(t, 2, del.Version) // 状态迁移同样递增版本（旧文档立即过期）
 
 	// 列表排除软删行
-	docs, err := dsvc.List(ctx, "soft_item", nil, 100)
+	docs, err := dsvc.List(ctx, "soft_item", nil, 100, false)
 	require.NoError(t, err)
 	require.Empty(t, docs)
 
@@ -168,6 +168,45 @@ func TestA2_SoftDeleteFlow(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, upd.Version, res2.Version)
 	require.Equal(t, repository.RowStatusActive, res2.Status)
+}
+
+// include_deleted 混排（2026-10-08——前端「已删除」灰态+恢复入口的数据面）：
+// 缺省仅 active；includeDeleted 时 active+deleted 混排（排序键 created_at,id 与
+// 行状态无关——keyset 游标语义不变）。
+func TestList_IncludeDeleted(t *testing.T) {
+	pool, tsvc := setupPG(t)
+	dsvc := newDataSvc(pool)
+	ctx := context.Background()
+
+	_, err := tsvc.Register(ctx, service.RegisterInput{TypeName: "incl_item", Fields: sampleFields()}, "system")
+	require.NoError(t, err)
+	docA := insertDoc(t, dsvc, "incl_item", 1, "a")
+	docB := insertDoc(t, dsvc, "incl_item", 2, "b")
+
+	_, err = dsvc.SoftDelete(ctx, "incl_item", docA.ID, "system")
+	require.NoError(t, err)
+
+	// 缺省：软删排除（仅 b）
+	activeOnly, err := dsvc.List(ctx, "incl_item", nil, 100, false)
+	require.NoError(t, err)
+	require.Len(t, activeOnly, 1)
+	require.Equal(t, docB.ID, activeOnly[0].ID)
+
+	// 混排：b(active) 前 a(deleted) 后（created_at DESC），状态各归其位
+	mixed, err := dsvc.List(ctx, "incl_item", nil, 100, true)
+	require.NoError(t, err)
+	require.Len(t, mixed, 2)
+	require.Equal(t, docB.ID, mixed[0].ID)
+	require.Equal(t, repository.RowStatusActive, mixed[0].Status)
+	require.Equal(t, docA.ID, mixed[1].ID)
+	require.Equal(t, repository.RowStatusDeleted, mixed[1].Status)
+
+	// 恢复后缺省列表回到 2 行全 active
+	_, err = dsvc.Restore(ctx, "incl_item", docA.ID, "system")
+	require.NoError(t, err)
+	activeOnly, err = dsvc.List(ctx, "incl_item", nil, 100, false)
+	require.NoError(t, err)
+	require.Len(t, activeOnly, 2)
 }
 
 // A2/A4 负向：数据行不存在 404（DATA_NOT_FOUND）；类型不存在 404（TYPE_NOT_FOUND）。

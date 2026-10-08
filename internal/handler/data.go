@@ -70,8 +70,11 @@ func (d *Deps) listData(c *gin.Context) {
 	if pageSize > maxSize {
 		pageSize = maxSize
 	}
+	// include_deleted=true 混入软删行（前端「已删除」灰态+恢复入口的数据面；
+	// 缺省 false 维持仅 active 的既有语义）。仅认 true/1——其余值一律缺省。
+	includeDeleted := c.Query("include_deleted") == "true" || c.Query("include_deleted") == "1"
 
-	docs, err := d.Data.List(c.Request.Context(), c.Param("typeName"), cur, pageSize)
+	docs, err := d.Data.List(c.Request.Context(), c.Param("typeName"), cur, pageSize, includeDeleted)
 	if err != nil {
 		Fail(c, asAppErr(err))
 		return

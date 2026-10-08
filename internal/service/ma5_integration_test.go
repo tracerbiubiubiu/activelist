@@ -101,7 +101,7 @@ func TestA5_ExportImportRoundTrip(t *testing.T) {
 	require.EqualValues(t, 3, nd.ID)
 
 	// 软删状态经往返保留：id=2 仍不可见
-	docs, err := dsvc.List(ctx, "xfer_item", nil, 100)
+	docs, err := dsvc.List(ctx, "xfer_item", nil, 100, false)
 	require.NoError(t, err)
 	require.Len(t, docs, 2) // 3 行中 1 行 deleted
 }
@@ -221,7 +221,7 @@ func TestA5_ImportEmptyAndDeprecated(t *testing.T) {
 	require.EqualValues(t, 2, res.Deleted)
 	require.EqualValues(t, 0, res.MaxID)
 
-	docs, err := dsvc.List(ctx, "emp_item", nil, 100)
+	docs, err := dsvc.List(ctx, "emp_item", nil, 100, false)
 	require.NoError(t, err)
 	require.Empty(t, docs)
 

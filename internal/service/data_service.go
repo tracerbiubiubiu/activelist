@@ -117,9 +117,10 @@ func (s *DataService) Get(ctx context.Context, typeName string, id int64) (*repo
 	return repository.GetDocByID(ctx, s.pool, def.TypeName, id)
 }
 
-// List 列表（仅 active 行；keyset 游标语义见 repository.Cursor）。limit 在本层
+// List 列表（默认仅 active 行；includeDeleted 时混入软删行——前端「已删除」灰态+
+// 恢复入口的数据面，2026-10-08。keyset 游标语义见 repository.Cursor）。limit 在本层
 // 再钳制一次——PG `LIMIT -1` 语义为不限行，直调方传非正值不得放大查询。
-func (s *DataService) List(ctx context.Context, typeName string, cur *repository.Cursor, pageSize int) ([]repository.Document, error) {
+func (s *DataService) List(ctx context.Context, typeName string, cur *repository.Cursor, pageSize int, includeDeleted bool) ([]repository.Document, error) {
 	def, err := s.gateType(ctx, typeName, false)
 	if err != nil {
 		return nil, err
@@ -130,7 +131,7 @@ func (s *DataService) List(ctx context.Context, typeName string, cur *repository
 	if pageSize > s.pageSizeMax {
 		pageSize = s.pageSizeMax
 	}
-	return repository.ListDocs(ctx, s.pool, def.TypeName, cur, pageSize)
+	return repository.ListDocs(ctx, s.pool, def.TypeName, cur, pageSize, includeDeleted)
 }
 
 // Update 更新数据（读-合并-全量校验-乐观锁；A2/A4）。
