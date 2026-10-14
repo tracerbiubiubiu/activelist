@@ -68,7 +68,7 @@
 | 方法 | 路径 | 用途 |
 |------|------|------|
 | POST | `/api/v1/data/:typeName` | 插入数据 |
-| GET | `/api/v1/data/:typeName` | 列表：仅 keyset 分页（`?after_created_at=<RFC3339>&after_id=<int>` **成对出现，缺一 400** / `?page_size=`）+ created_at DESC, id DESC 倒序 |
+| GET | `/api/v1/data/:typeName` | 列表：仅 keyset 分页（`?after_created_at=<RFC3339>&after_id=<int>` **成对出现，缺一 400** / `?page_size=` / `?include_deleted=true\|1` 混入软删行——2026-10-08 恢复入口数据面，缺省仅 active）+ created_at DESC, id DESC 倒序；翻页 `next_cursor.after_id` 字符串出站（2026-10-14 契约审计 B1） |
 | GET | `/api/v1/data/:typeName/:id` | 查单条 |
 | POST | `/api/v1/data/:typeName/:id/update` | 更新（body 携带 version，乐观锁） |
 | POST | `/api/v1/data/:typeName/:id/delete` | 软删除 |
@@ -166,7 +166,7 @@ tz: Asia/Shanghai             # 容器时区（基线 §9，compose environment 
 - **Insert 重试重复（已知限制，接受）**：无业务唯一键 + 自增 id，调用方重试 POST 会产生重复行；调用方为 zhuzhao 统一 client 层，如需可后置加 `Idempotency-Key`（RFC draft / Stripe 模式），activelist 侧不实现。
 - **备份（敏感高危数据必须）**：activelist PG 每日基线备份（pg_dump）+ WAL 归档（PITR）；导入等高危操作前建议先快照。备份策略随 M-A6 写入部署文档。
 - **保留字段**：`id` / `version` / `status` / `created_at` / `updated_at` / `created_by` / `updated_by` / `data` 禁止用户 schema 使用。
-- **软删行查询**：列表默认排除；单查按 id 可见（带 status 标注）——便于审计对账与恢复操作。
+- **软删行查询**：列表默认排除（`?include_deleted=true|1` 混入软删行，2026-10-08 恢复入口数据面）；单查按 id 可见（带 status 标注）——便于审计对账与恢复操作。
 
 ## 8. 开放项（实现前/上线前需关闭）
 

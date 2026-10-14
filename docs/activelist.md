@@ -5,7 +5,7 @@
 > **⚠️ 2026-09-03 职责收敛声明（SSOT = 本文件头部定稿 + 本仓库 `docs/ADR-003-integration-contract.md`；zhuzhao 侧 ADR-003 / design-decisions 为镜像，2026-09-03 起以 activelist 仓库为准）**：本方案为原始完整设计（事件驱动 + 全生命周期审计 + 三进程高可用）。经职责收敛拍板，**activelist 收窄为「动态数据模型平台」**——只负责：类型注册 / Schema 演进 / 动态字段校验 / 数据 CRUD / 存储（乐观锁、软删除保留）。**事件驱动与审计（历史快照）移交给 zhuzhao**（事件 = zhuzhao Asynq；审计 = zhuzhao 侧记录），activelist 不感知事件、不写历史快照。**独立部署保留**（独立服务 + 独立库 + 独立数据库，zhuzhao 作对外网关调用）。进程由 3 个减为 1 个（仅 apiserver）。
 >
 > 本文后续正文仍为完整历史方案，章节有效性如下：
-> - **继续有效（数据模型层·语义）**：§5.1/§5.2（数据/元数据模型——保留字段清单、版本不可删等语义；**存储形态已被 PG 每类型一张表 + `data` JSONB 取代**，表结构以 ADR-003 sketch 与 implementation-plan §5 为准）、§6.1–6.5（Registry/Repository/Validation/Schema 演进/软删除状态机——**§6.5 的 `?include_deleted=true` 查询参数已被「软删行按 id 单查可见 + `POST /:id/restore` 恢复端点」取代**，2026-09-09）、§10（并发控制）、§15（安全——其中 §15.1 认证口径已被 AK/SK 基线修订覆盖，见下）。
+> - **继续有效（数据模型层·语义）**：§5.1/§5.2（数据/元数据模型——保留字段清单、版本不可删等语义；**存储形态已被 PG 每类型一张表 + `data` JSONB 取代**，表结构以 ADR-003 sketch 与 implementation-plan §5 为准）、§6.1–6.5（Registry/Repository/Validation/Schema 演进/软删除状态机——软删语义现行口径见 implementation-plan §4/§7；**`?include_deleted=true` 列表查询参数：2026-09-09 曾以「软删行按 id 单查可见 + `POST /:id/restore`」取代，2026-10-08 为恢复入口补数据面已在列表端点重新实现（query `include_deleted` 仅认 true/1，缺省仍仅 active）**）、§10（并发控制）、§15（安全——其中 §15.1 认证口径已被 AK/SK 基线修订覆盖，见下）。
 > - **已被取代（仅作历史参考）**：§6.7（查询安全——按最终画像收窄为 id 分页 + 时间倒序）、§6.9（API 清单——以 [`implementation-plan.md`](./implementation-plan.md) §4 为准）；§6.8（错误码）语义仍沿用。**实现细节与本文件冲突时，一律以 implementation-plan.md 为准。**
 - **§15.4 仅「缺失兜底 system」规则有效**：其溯源链路（Change Stream/历史集合）与「不感知字段敏感性」表述已被收敛/AK-SK 修订取代（`sensitive: true` 钩子预留，见 implementation-plan §7）。
 - **§4（技术栈）已废**：MongoDB/Redis/Asynq/asynqmon 行全部失效（收敛后 = gin + PG + zhuzhao-utils）；现行技术栈以 implementation-plan.md §5/§6 为准。
