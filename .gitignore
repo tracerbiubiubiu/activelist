@@ -2,3 +2,7 @@ bin/
 logs/
 data/
 .env
+
+# Ai
+.codebuddy/
+.workbuddy/
