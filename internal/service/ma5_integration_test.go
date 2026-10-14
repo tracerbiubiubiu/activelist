@@ -272,7 +272,7 @@ func TestA5_HTTPExportImport(t *testing.T) {
 		Data struct {
 			Rows    int64 `json:"rows"`
 			Deleted int64 `json:"deleted"`
-			MaxID   int64 `json:"max_id"`
+			MaxID   int64 `json:"max_id,string"` // 镜像服务端契约（2026-10-14 审计 B1：MaxID 出站字符串化）
 		} `json:"data"`
 	}
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &env))
