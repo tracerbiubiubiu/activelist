@@ -21,7 +21,7 @@ type Field struct {
 	Name      string `json:"name"`
 	Type      string `json:"type"` // int | string | int_list | string_list
 	Required  bool   `json:"required"`
-	Sensitive bool   `json:"sensitive,omitempty"`
+	Sensitive bool   `json:"sensitive"` // omitempty 已去（契约审计 B3）：与 Required 同形态恒出，false 不得消失
 }
 
 // SchemaDef 当前 schema（对象包装，向前可扩展）。
@@ -216,6 +216,11 @@ func scanDef(row pgx.Row) (*Definition, error) {
 		return nil, apperr.New(500, apperr.CodeInternal, "schema 解析失败")
 	}
 	d.Fields = sd.Fields
+	// nil → 空切片兜底（契约审计 B2）：schema_def 被外部改坏为 {}/null 时响应
+	// fields 出 [] 而非 null（handler 顶层列表有同类兜底，嵌套字段此前缺失）
+	if d.Fields == nil {
+		d.Fields = []Field{}
+	}
 	return &d, nil
 }
 

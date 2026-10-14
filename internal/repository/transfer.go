@@ -67,7 +67,13 @@ func DeleteAllDocs(ctx context.Context, q dbtx, typeName string) (int64, error) 
 func InsertImportBatch(ctx context.Context, q dbtx, typeName string, docs []Document) error {
 	batch := &pgx.Batch{}
 	for i := range docs {
-		raw, err := json.Marshal(docs[i].Data)
+		// Data nil 归一空对象（契约审计 B2）：无必填字段类型 + 文件缺 data 键时
+		// nil map 序列化为 null 落库，此后读/导出侧 {} 与 null 二义
+		data := docs[i].Data
+		if data == nil {
+			data = map[string]any{}
+		}
+		raw, err := json.Marshal(data)
 		if err != nil {
 			return apperr.New(422, apperr.CodeValidation,
 				"导入行 data 序列化失败（id="+strconv.FormatInt(docs[i].ID, 10)+"）")

@@ -85,7 +85,9 @@ func (d *Deps) listData(c *gin.Context) {
 	var next any
 	if len(docs) == pageSize {
 		last := docs[len(docs)-1]
-		next = gin.H{"after_created_at": last.CreatedAt, "after_id": last.ID}
+		// after_id 字符串化（2026-10-14 契约审计 B1：同响应 id 已 ,string，游标回显
+		// 裸 int64 超 2^53 经 JS Number 精度失真致翻页跳行/重行）
+		next = gin.H{"after_created_at": last.CreatedAt, "after_id": strconv.FormatInt(last.ID, 10)}
 	}
 	OK(c, gin.H{"list": docs, "page_size": pageSize, "next_cursor": next})
 }

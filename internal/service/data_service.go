@@ -302,10 +302,10 @@ func setLockTimeout(ctx context.Context, tx pgx.Tx) error {
 
 // ImportResult 全量替换导入的批次汇总（§4：行数/耗时/max id——审计契约素材）。
 type ImportResult struct {
-	Rows       int64 `json:"rows"`        // 重灌行数
-	Deleted    int64 `json:"deleted"`     // 清表删除行数（含软删）
-	MaxID      int64 `json:"max_id"`      // 导入后最大 id（序列已校准至 max+1）
-	DurationMS int64 `json:"duration_ms"` // 事务内全程耗时
+	Rows       int64 `json:"rows"`          // 重灌行数
+	Deleted    int64 `json:"deleted"`       // 清表删除行数（含软删）
+	MaxID      int64 `json:"max_id,string"` // 导入后最大 id（序列已校准至 max+1；,string 对齐 ID 公约——契约审计 B1）
+	DurationMS int64 `json:"duration_ms"`   // 事务内全程耗时
 }
 
 // Export 全量导出（流式写 JSON 数组到 w；含软删行；含 id/status/created_at 等
