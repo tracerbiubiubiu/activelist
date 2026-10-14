@@ -432,3 +432,35 @@ func TestA3_HTTPEnvelopeData(t *testing.T) {
 	require.Equal(t, http.StatusNotFound, w.Code)
 	require.Contains(t, w.Body.String(), `"code":100002`)
 }
+
+// 2026-10-14 契约审计 B1 护栏：满页翻页 next_cursor.after_id 必须字符串出站——
+// 游标回显若为裸 number，超 2^53 经 JS Number 精度失真致翻页跳行/重行。
+func TestList_NextCursorWireFormIsString(t *testing.T) {
+	pool, tsvc := setupPG(t)
+	dsvc := newDataSvc(pool)
+	ctx := context.Background()
+
+	_, err := tsvc.Register(ctx, service.RegisterInput{TypeName: "cursor_items", Fields: sampleFields()}, "system")
+	require.NoError(t, err)
+	for i := 0; i < 3; i++ {
+		insertDoc(t, dsvc, "cursor_items", i, fmt.Sprintf("r%d", i))
+	}
+
+	gin.SetMode(gin.TestMode)
+	r := handler.New(handler.Deps{Types: tsvc, Data: dsvc})
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/api/v1/data/cursor_items?page_size=2", nil))
+	require.Equal(t, http.StatusOK, w.Code, w.Body.String())
+	var env struct {
+		Data struct {
+			NextCursor *struct {
+				AfterCreatedAt any `json:"after_created_at"`
+				AfterID        any `json:"after_id"`
+			} `json:"next_cursor"`
+		} `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &env))
+	require.NotNil(t, env.Data.NextCursor, "满页必出 next_cursor")
+	require.IsType(t, "", env.Data.NextCursor.AfterID, "after_id 必须字符串出站（契约审计 B1）")
+	require.Equal(t, "2", env.Data.NextCursor.AfterID)
+}
