@@ -4,7 +4,11 @@
 // HTTP 状态码只表重试语义（4xx 不可重试 / 5xx 可重试）。
 package apperr
 
-import "fmt"
+import (
+	"fmt"
+
+	"github.com/tracerbiubiubiu/zhuzhao-utils/errcode"
+)
 
 // error_code 字符串常量（内部标识；线上以 Num() 数值码为准）。
 const (
@@ -45,8 +49,8 @@ var numByCode = map[string]int{
 	CodeFieldDepr:     numFieldDepr,
 	CodeNewRequired:   numNewRequired,
 	CodeConflict:      numConflict,
-	CodeInternal:      10000, // utils ErrInternal
-	CodeDependency:    10008, // utils ErrServiceUnavailable
+	CodeInternal:      errcode.ErrInternal.Code, // 通用段引用 utils 常量（§3-11 码值引用纪律）
+	CodeDependency:    errcode.ErrServiceUnavailable.Code,
 }
 
 // Error 业务错误。HTTP 为响应状态码，Code 为内部 error_code 标识，
@@ -70,7 +74,7 @@ func (e *Error) Num() int {
 	if n, ok := numByCode[e.Code]; ok {
 		return n
 	}
-	return 10000
+	return errcode.ErrInternal.Code
 }
 
 // WithDetail 附加结构化上下文（链式；渲染时折叠进 message）。
