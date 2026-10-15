@@ -49,7 +49,7 @@
 
 ## 4. API 清单（收敛后修订版，**取代 activelist.md §6.9 旧清单**）
 
-> 旧清单中 `/history` 数据端点移除（审计归 zhuzhao）；列表查询砍掉 filter/sort；新增导入导出与恢复；**写接口（插入/更新/删除/恢复，统一 POST 子路径——2026-09-09 实现拍板：`/:id/update` / `/:id/delete` / `/:id/restore`）统一返回变更后完整文档**（id、version、data、updated_at——审计契约素材，见 ADR-003 收敛修订）。
+> 旧清单中 `/history` 数据端点移除（审计归 zhuzhao）；列表查询砍掉 filter/sort；新增导入导出与恢复；**写接口统一 POST、统一返回变更后完整文档**（id、version、data、updated_at——审计契约素材，见 ADR-003 收敛修订）。**标识位置两形态在册（2026-09-29 整改批【ae7e8f0/000032】）**：类型域端点（deprecate/schema）与数据恢复（restore）为「静态段路径 + 标识入 body」；数据 `/:typeName/:id/update|delete` 维持「URL 标识 + 动词段」存量形态（先于整改批、与已上线 ui 消费契约耦合，登记保留）。
 
 **类型管理**（zhuzhao 侧 Restrict 映射 `activelist:admin`）：
 
@@ -60,8 +60,8 @@
 | GET | `/api/v1/admin/types/rules` | 类型与字段创建规则（前端弹窗展示用） |
 | GET | `/api/v1/admin/types/:typeName` | 当前 schema 定义 |
 | GET | `/api/v1/admin/types/:typeName/history` | **schema 变更历史**（元数据侧，非数据快照） |
-| POST | `/api/v1/admin/types/:typeName/schema` | Schema 演进（方案 D 语义） |
-| POST | `/api/v1/admin/types/:typeName/deprecate` | 废弃类型 |
+| POST | `/api/v1/admin/types/schema` | Schema 演进（方案 D 语义；body `{type_name, fields 全量定义, version}` 乐观锁） |
+| POST | `/api/v1/admin/types/deprecate` | 废弃类型（body `{type_name}`）——两行均 000032 标识入 body 整改后形态【ae7e8f0】 |
 
 **数据 CRUD + 导入导出**（Restrict 映射 `activelist:read` / `write`）：
 
@@ -72,7 +72,7 @@
 | GET | `/api/v1/data/:typeName/:id` | 查单条 |
 | POST | `/api/v1/data/:typeName/:id/update` | 更新（body 携带 version，乐观锁） |
 | POST | `/api/v1/data/:typeName/:id/delete` | 软删除 |
-| POST | `/api/v1/data/:typeName/:id/restore` | 恢复软删数据（最终画像「高危数据误删可恢复」） |
+| POST | `/api/v1/data/restore` | 恢复软删数据（body `{type_name, id}`，幂等返回恢复后完整文档——最终画像「高危数据误删可恢复」；000032 标识入 body 整改后形态） |
 | GET | `/api/v1/data/:typeName/export` | 全量导出 JSON 数组（流式；完整文档，含软删行——否则导出→导入会丢失软删数据） |
 | POST | `/api/v1/data/:typeName/import` | 全量替换导入（与导出同构的 JSON 数组 body；响应返回批次汇总：行数/耗时/max id） |
 
