@@ -70,7 +70,28 @@ func TestValidateFields(t *testing.T) {
 		{"保留 id 拒绝", []meta.Field{{Name: "id", Type: "int"}}, apperr.CodeReservedField},
 		{"保留 created_at 拒绝", []meta.Field{{Name: "created_at", Type: "string"}}, apperr.CodeReservedField},
 		{"重复名拒绝", []meta.Field{{Name: "a", Type: "int"}, {Name: "a", Type: "string"}}, apperr.CodeValidation},
+		// max_len（2026-10-27 字符上限拍板）：int 家族语义错配注册期拒绝、超界拒绝
+		{"int 带 max_len 拒绝", []meta.Field{{Name: "qty", Type: "int", MaxLen: 100}}, apperr.CodeValidation},
+		{"int_list 带 max_len 拒绝", []meta.Field{{Name: "nums", Type: "int_list", MaxLen: 100}}, apperr.CodeValidation},
+		{"max_len 超上界拒绝", []meta.Field{{Name: "x", Type: "string", MaxLen: 65536}}, apperr.CodeValidation},
+		{"max_len 负值拒绝", []meta.Field{{Name: "x", Type: "string", MaxLen: -1}}, apperr.CodeValidation},
+		// max_items（同批拍板）：非列表类型语义错配拒绝、超界拒绝
+		{"string 带 max_items 拒绝", []meta.Field{{Name: "x", Type: "string", MaxItems: 10}}, apperr.CodeValidation},
+		{"int 带 max_items 拒绝", []meta.Field{{Name: "qty", Type: "int", MaxItems: 10}}, apperr.CodeValidation},
+		{"max_items 超上界拒绝", []meta.Field{{Name: "x", Type: "int_list", MaxItems: 65536}}, apperr.CodeValidation},
+		{"max_items 负值拒绝", []meta.Field{{Name: "x", Type: "string_list", MaxItems: -1}}, apperr.CodeValidation},
 	}
+	// max_len 合法形态（上界内可配/0 缺省）
+	require.Nil(t, ValidateFields([]meta.Field{{Name: "x", Type: "string", MaxLen: 1000}}))
+	require.Nil(t, ValidateFields([]meta.Field{{Name: "x", Type: "string", MaxLen: stringMaxLenMax}}))
+	require.Nil(t, ValidateFields([]meta.Field{{Name: "x", Type: "string_list", MaxLen: 1}}))
+	// max_items 合法形态（列表家族可配）
+	require.Nil(t, ValidateFields([]meta.Field{{Name: "x", Type: "int_list", MaxItems: 50}}))
+	require.Nil(t, ValidateFields([]meta.Field{{Name: "x", Type: "string_list", MaxItems: listMaxItemsMax, MaxLen: 100}}))
+	// max_len 合法形态（上界内可配/0 缺省）
+	require.Nil(t, ValidateFields([]meta.Field{{Name: "x", Type: "string", MaxLen: 1000}}))
+	require.Nil(t, ValidateFields([]meta.Field{{Name: "x", Type: "string", MaxLen: stringMaxLenMax}}))
+	require.Nil(t, ValidateFields([]meta.Field{{Name: "x", Type: "string_list", MaxLen: 1}}))
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			err := ValidateFields(c.fields)

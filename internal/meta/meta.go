@@ -22,6 +22,12 @@ type Field struct {
 	Type      string `json:"type"` // int | string | int_list | string_list
 	Required  bool   `json:"required"`
 	Sensitive bool   `json:"sensitive"` // omitempty 已去（契约审计 B3）：与 Required 同形态恒出，false 不得消失
+	// MaxLen string/string_list 单值上限（字符数非字节；0=默认 255——存量 schema
+	// 无此列时自动兜底）。恒出与 Sensitive 同口径（契约审计「同概念同形态」）；
+	// 2026-10-27 所有者拍板立项：类型注册可配 + 数据写路径强制
+	MaxLen int `json:"max_len"`
+	// MaxItems int_list/string_list 项数上限（0=默认 100，同日同批拍板；恒出同口径）
+	MaxItems int `json:"max_items"`
 }
 
 // SchemaDef 当前 schema（对象包装，向前可扩展）。

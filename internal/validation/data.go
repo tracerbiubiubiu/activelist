@@ -5,6 +5,8 @@ package validation
 
 import (
 	"math"
+	"strconv"
+	"unicode/utf8"
 
 	"github.com/tracerbiubiubiu/activelist/internal/apperr"
 	"github.com/tracerbiubiubiu/activelist/internal/meta"
@@ -60,13 +62,22 @@ func checkValue(f meta.Field, v any) *apperr.Error {
 			return badType()
 		}
 	case "string":
-		if _, ok := v.(string); !ok {
+		s, ok := v.(string)
+		if !ok {
 			return badType()
+		}
+		if n := utf8.RuneCountInString(s); n > stringLimit(f) {
+			return invalid("字段值超长（上限 "+strconv.Itoa(stringLimit(f))+" 字符）").
+				WithDetail("field", f.Name).WithDetail("length", n).WithDetail("max_len", stringLimit(f))
 		}
 	case "int_list":
 		list, ok := v.([]any)
 		if !ok {
 			return badType()
+		}
+		if n := len(list); n > listLimit(f) {
+			return invalid("列表项数超限（上限 "+strconv.Itoa(listLimit(f))+" 项）").
+				WithDetail("field", f.Name).WithDetail("count", n).WithDetail("max_items", listLimit(f))
 		}
 		for i, el := range list {
 			if !isJSONInt(el) {
@@ -79,14 +90,40 @@ func checkValue(f meta.Field, v any) *apperr.Error {
 		if !ok {
 			return badType()
 		}
+		if n := len(list); n > listLimit(f) {
+			return invalid("列表项数超限（上限 "+strconv.Itoa(listLimit(f))+" 项）").
+				WithDetail("field", f.Name).WithDetail("count", n).WithDetail("max_items", listLimit(f))
+		}
 		for i, el := range list {
-			if _, ok := el.(string); !ok {
+			s, ok := el.(string)
+			if !ok {
 				return invalid("列表元素类型不符（期望 string）").
 					WithDetail("field", f.Name).WithDetail("index", i).WithDetail("value", el)
+			}
+			if n := utf8.RuneCountInString(s); n > stringLimit(f) {
+				return invalid("列表元素超长（上限 "+strconv.Itoa(stringLimit(f))+" 字符）").
+					WithDetail("field", f.Name).WithDetail("index", i).WithDetail("length", n)
 			}
 		}
 	}
 	return nil
+}
+
+// stringLimit 字段生效的字符上限（Field.MaxLen=0=缺省 stringMaxLenDefault——
+// 存量 schema 无此列时自动兜底；数据校验与注册校验同源常量，无第二份副本）。
+func stringLimit(f meta.Field) int {
+	if f.MaxLen > 0 {
+		return f.MaxLen
+	}
+	return stringMaxLenDefault
+}
+
+// listLimit 字段生效的项数上限（Field.MaxItems=0=缺省 listMaxItemsDefault，同上兜底口径）。
+func listLimit(f meta.Field) int {
+	if f.MaxItems > 0 {
+		return f.MaxItems
+	}
+	return listMaxItemsDefault
 }
 
 // isJSONInt JSON 整数判定（含列表元素复用）。
