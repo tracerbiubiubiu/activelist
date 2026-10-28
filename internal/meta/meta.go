@@ -22,27 +22,33 @@ type Field struct {
 	Type      string `json:"type"` // int | string | int_list | string_list
 	Required  bool   `json:"required"`
 	Sensitive bool   `json:"sensitive"` // omitempty 已去（契约审计 B3）：与 Required 同形态恒出，false 不得消失
-	// MaxLen string/string_list 单值上限（字符数非字节；0=默认 255——存量 schema
+	// MaxChars string/string_list 单值上限（字符数非字节；0=默认 255——存量 schema
 	// 无此列时自动兜底）。恒出与 Sensitive 同口径（契约审计「同概念同形态」）；
-	// 2026-10-27 所有者拍板立项：类型注册可配 + 数据写路径强制
-	MaxLen int `json:"max_len"`
-	// MaxItems int_list/string_list 项数上限（0=默认 100，同日同批拍板；恒出同口径）
-	MaxItems int `json:"max_items"`
+	// 2026-10-27 所有者拍板立项：类型注册可配 + 数据写路径强制。
+	// 命名 MaxChars（原 max_len）= 明确「字符数」语义，与项数上限对称可读
+	MaxChars int `json:"max_chars"`
+	// MaxListItems int_list/string_list 项数上限（0=默认 100，同日同批拍板；恒出同口径）
+	MaxListItems int `json:"max_list_items"`
 }
 
 // SchemaDef 当前 schema（对象包装，向前可扩展）。
 type SchemaDef struct {
 	Fields []Field `json:"fields"`
+	// UniqueFields 唯一键（1..N 个标量字段组合；空=类型无唯一约束——
+	// 2026-10-27 所有者提出：多源汇聚整体去重）。写路径对活跃行查重 409，
+	// 软删行不占用唯一性（恢复时才查）；序列化恒出空数组（契约审计 B2 口径）。
+	UniqueFields []string `json:"unique_fields"`
 }
 
 // Definition 类型定义文档（data_types 行 + 解析后的 schema）。
 type Definition struct {
-	TypeName  string    `json:"type_name"`
-	Fields    []Field   `json:"fields"`
-	Status    string    `json:"status"` // active | deprecated
-	Version   int64     `json:"version"`
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
+	TypeName     string    `json:"type_name"`
+	Fields       []Field   `json:"fields"`
+	UniqueFields []string  `json:"unique_fields"`
+	Status       string    `json:"status"` // active | deprecated
+	Version      int64     `json:"version"`
+	CreatedAt    time.Time `json:"created_at"`
+	UpdatedAt    time.Time `json:"updated_at"`
 }
 
 const (
@@ -56,9 +62,13 @@ type pgxPool interface {
 	Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error)
 }
 
-// schemaDefJSON 列存储形态（与 Definition.Fields 同源，单点序列化）。
-func schemaDefJSON(fields []Field) ([]byte, error) {
-	return json.Marshal(SchemaDef{Fields: fields})
+// schemaDefJSON 列存储形态（与 Definition 同源，单点序列化；unique_fields
+// nil→[] 恒出——契约审计 B2 口径）。
+func schemaDefJSON(fields []Field, uniqueFields []string) ([]byte, error) {
+	if uniqueFields == nil {
+		uniqueFields = []string{}
+	}
+	return json.Marshal(SchemaDef{Fields: fields, UniqueFields: uniqueFields})
 }
 
 // InsertType 注册类型（事务内）。typeName 唯一冲突 → 409 TYPE_ALREADY_EXISTS。
@@ -69,8 +79,8 @@ func schemaDefJSON(fields []Field) ([]byte, error) {
 // 状态（25P02），后续语句一律失败——不可用 tx 补查。pool 为独立连接、新语句，
 // READ COMMITTED 下对已提交的冲突行可见（返回 23505 时冲突方必然已提交）。
 // 补查自身失败时退回通用 409（不向外抛 500，保留 TYPE_ALREADY_EXISTS 语义）。
-func InsertType(ctx context.Context, tx pgx.Tx, pool pgxPool, typeName string, fields []Field, operator string) error {
-	def, err := schemaDefJSON(fields)
+func InsertType(ctx context.Context, tx pgx.Tx, pool pgxPool, typeName string, fields []Field, uniqueFields []string, operator string) error {
+	def, err := schemaDefJSON(fields, uniqueFields)
 	if err != nil {
 		return apperr.New(500, apperr.CodeInternal, "schema 序列化失败")
 	}
@@ -105,8 +115,8 @@ func InsertType(ctx context.Context, tx pgx.Tx, pool pgxPool, typeName string, f
 }
 
 // InsertHistory 追加变更历史（事务内；只追加不更新）。
-func InsertHistory(ctx context.Context, tx pgx.Tx, typeName, op string, fields []Field, operator string) error {
-	def, err := schemaDefJSON(fields)
+func InsertHistory(ctx context.Context, tx pgx.Tx, typeName, op string, fields []Field, uniqueFields []string, operator string) error {
+	def, err := schemaDefJSON(fields, uniqueFields)
 	if err != nil {
 		return apperr.New(500, apperr.CodeInternal, "schema 序列化失败")
 	}
@@ -121,16 +131,17 @@ func InsertHistory(ctx context.Context, tx pgx.Tx, typeName, op string, fields [
 
 // HistoryEntry schema 变更历史行（data_type_schema_history；只追加，每行存变更后完整 schema）。
 type HistoryEntry struct {
-	Op        string    `json:"op"` // register | evolve | deprecate
-	Fields    []Field   `json:"fields"`
-	ChangedBy string    `json:"changed_by"`
-	CreatedAt time.Time `json:"created_at"`
+	Op           string    `json:"op"` // register | evolve | deprecate
+	Fields       []Field   `json:"fields"`
+	UniqueFields []string  `json:"unique_fields"`
+	ChangedBy    string    `json:"changed_by"`
+	CreatedAt    time.Time `json:"created_at"`
 }
 
 // UpdateSchema schema 演进（方案 D，事务内）：全量定义替换 + 元数据行乐观锁
 // （§7——后到者 0 行 → moved=false，service 转 409 并提示重读重提）。
-func UpdateSchema(ctx context.Context, tx pgx.Tx, typeName string, fields []Field, expectedVersion int64, operator string) (bool, error) {
-	def, err := schemaDefJSON(fields)
+func UpdateSchema(ctx context.Context, tx pgx.Tx, typeName string, fields []Field, uniqueFields []string, expectedVersion int64, operator string) (bool, error) {
+	def, err := schemaDefJSON(fields, uniqueFields)
 	if err != nil {
 		return false, apperr.New(500, apperr.CodeInternal, "schema 序列化失败")
 	}
@@ -167,6 +178,7 @@ func ListHistory(ctx context.Context, pool pgxPool, typeName string) ([]HistoryE
 			return nil, apperr.New(500, apperr.CodeInternal, "历史 schema 解析失败")
 		}
 		h.Fields = sd.Fields
+		h.UniqueFields = sd.UniqueFields
 		out = append(out, h)
 	}
 	if err := rows.Err(); err != nil {
@@ -226,6 +238,10 @@ func scanDef(row pgx.Row) (*Definition, error) {
 	// fields 出 [] 而非 null（handler 顶层列表有同类兜底，嵌套字段此前缺失）
 	if d.Fields == nil {
 		d.Fields = []Field{}
+	}
+	d.UniqueFields = sd.UniqueFields
+	if d.UniqueFields == nil {
+		d.UniqueFields = []string{}
 	}
 	return &d, nil
 }

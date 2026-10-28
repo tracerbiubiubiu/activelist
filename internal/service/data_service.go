@@ -11,6 +11,7 @@ import (
 	"io"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -98,6 +99,9 @@ func (s *DataService) Insert(ctx context.Context, typeName string, in InsertInpu
 	if err := setLockTimeout(ctx, tx); err != nil {
 		return nil, err
 	}
+	if err := s.checkUniqueDup(ctx, tx, def, in.Data, 0); err != nil {
+		return nil, err
+	}
 	doc, err := repository.InsertDoc(ctx, tx, def.TypeName, raw, operator)
 	if err != nil {
 		return nil, err
@@ -171,6 +175,9 @@ func (s *DataService) Update(ctx context.Context, typeName string, id int64, in 
 	if err := validation.ValidateData(def.Fields, merged); err != nil {
 		return nil, s.mapDataValidationError(ctx, err, def, true)
 	}
+	if err := s.checkUniqueDup(ctx, tx, def, merged, id); err != nil {
+		return nil, err
+	}
 	raw, err := json.Marshal(merged)
 	if err != nil {
 		return nil, apperr.New(422, apperr.CodeValidation, "data 序列化失败")
@@ -240,6 +247,10 @@ func (s *DataService) Restore(ctx context.Context, typeName string, id int64, op
 		return nil, err
 	}
 	if doc.Status == repository.RowStatusDeleted {
+		// 恢复前查重：软删行不占用唯一性，但恢复成 active 时不得与活跃行撞键
+		if err := s.checkUniqueDup(ctx, tx, def, doc.Data, id); err != nil {
+			return nil, err
+		}
 		nd, moved, err := repository.UpdateDocStatus(ctx, tx, def.TypeName, id,
 			repository.RowStatusDeleted, repository.RowStatusActive, operator)
 		if err != nil {
@@ -298,6 +309,30 @@ func setLockTimeout(ctx context.Context, tx pgx.Tx) error {
 		return apperr.New(500, apperr.CodeInternal, "设置锁等待超时失败")
 	}
 	return nil
+}
+
+// checkUniqueDup 唯一键查重（2026-10-27 所有者提出——多源汇聚整体去重）：
+// 类型声明了 unique_fields 时，对活跃行查同键（事务内执行，与后续写同锁窗口）。
+// excludeID 排除自身（更新/恢复）；任一唯一键字段缺失不查（缺键行不去重，
+// repository 层同语义）。命中 409 带存量行 id。已知限制（第一档登记）：
+// ① SELECT→INSERT 窗口内并发同键可双写（硬保证=二档 partial unique index）；
+// ② 导入为全量替换权威语义，不查唯一键；③ 查重为活跃行全扫，量大后加
+// 表达式索引（触发驱动，同保留期归档口径）。
+func (s *DataService) checkUniqueDup(ctx context.Context, q pgx.Tx, def *meta.Definition, data map[string]any, excludeID int64) error {
+	if len(def.UniqueFields) == 0 {
+		return nil
+	}
+	dupID, found, err := repository.FindActiveDupID(ctx, q, def.TypeName, def.UniqueFields, data, excludeID)
+	if err != nil {
+		return err
+	}
+	if !found {
+		return nil
+	}
+	return apperr.New(409, apperr.CodeConflict,
+		"唯一键冲突: "+strings.Join(def.UniqueFields, "+")+" 已有活跃数据行").
+		WithDetail("unique_fields", def.UniqueFields).
+		WithDetail("existing_id", dupID)
 }
 
 // ImportResult 全量替换导入的批次汇总（§4：行数/耗时/max id——审计契约素材）。

@@ -70,28 +70,28 @@ func TestValidateFields(t *testing.T) {
 		{"保留 id 拒绝", []meta.Field{{Name: "id", Type: "int"}}, apperr.CodeReservedField},
 		{"保留 created_at 拒绝", []meta.Field{{Name: "created_at", Type: "string"}}, apperr.CodeReservedField},
 		{"重复名拒绝", []meta.Field{{Name: "a", Type: "int"}, {Name: "a", Type: "string"}}, apperr.CodeValidation},
-		// max_len（2026-10-27 字符上限拍板）：int 家族语义错配注册期拒绝、超界拒绝
-		{"int 带 max_len 拒绝", []meta.Field{{Name: "qty", Type: "int", MaxLen: 100}}, apperr.CodeValidation},
-		{"int_list 带 max_len 拒绝", []meta.Field{{Name: "nums", Type: "int_list", MaxLen: 100}}, apperr.CodeValidation},
-		{"max_len 超上界拒绝", []meta.Field{{Name: "x", Type: "string", MaxLen: 65536}}, apperr.CodeValidation},
-		{"max_len 负值拒绝", []meta.Field{{Name: "x", Type: "string", MaxLen: -1}}, apperr.CodeValidation},
+		// max_chars（2026-10-27 字符上限拍板）：int 家族语义错配注册期拒绝、超界拒绝
+		{"int 带 max_chars 拒绝", []meta.Field{{Name: "qty", Type: "int", MaxChars: 100}}, apperr.CodeValidation},
+		{"int_list 带 max_chars 拒绝", []meta.Field{{Name: "nums", Type: "int_list", MaxChars: 100}}, apperr.CodeValidation},
+		{"max_chars 超上界拒绝", []meta.Field{{Name: "x", Type: "string", MaxChars: 65536}}, apperr.CodeValidation},
+		{"max_len 负值拒绝", []meta.Field{{Name: "x", Type: "string", MaxChars: -1}}, apperr.CodeValidation},
 		// max_items（同批拍板）：非列表类型语义错配拒绝、超界拒绝
-		{"string 带 max_items 拒绝", []meta.Field{{Name: "x", Type: "string", MaxItems: 10}}, apperr.CodeValidation},
-		{"int 带 max_items 拒绝", []meta.Field{{Name: "qty", Type: "int", MaxItems: 10}}, apperr.CodeValidation},
-		{"max_items 超上界拒绝", []meta.Field{{Name: "x", Type: "int_list", MaxItems: 65536}}, apperr.CodeValidation},
-		{"max_items 负值拒绝", []meta.Field{{Name: "x", Type: "string_list", MaxItems: -1}}, apperr.CodeValidation},
+		{"string 带 max_list_items 拒绝", []meta.Field{{Name: "x", Type: "string", MaxListItems: 10}}, apperr.CodeValidation},
+		{"int 带 max_list_items 拒绝", []meta.Field{{Name: "qty", Type: "int", MaxListItems: 10}}, apperr.CodeValidation},
+		{"max_list_items 超上界拒绝", []meta.Field{{Name: "x", Type: "int_list", MaxListItems: 65536}}, apperr.CodeValidation},
+		{"max_list_items 负值拒绝", []meta.Field{{Name: "x", Type: "string_list", MaxListItems: -1}}, apperr.CodeValidation},
 	}
 	// max_len 合法形态（上界内可配/0 缺省）
-	require.Nil(t, ValidateFields([]meta.Field{{Name: "x", Type: "string", MaxLen: 1000}}))
+	require.Nil(t, ValidateFields([]meta.Field{{Name: "x", Type: "string", MaxChars: 1000}}))
 	require.Nil(t, ValidateFields([]meta.Field{{Name: "x", Type: "string", MaxLen: stringMaxLenMax}}))
-	require.Nil(t, ValidateFields([]meta.Field{{Name: "x", Type: "string_list", MaxLen: 1}}))
+	require.Nil(t, ValidateFields([]meta.Field{{Name: "x", Type: "string_list", MaxChars: 1}}))
 	// max_items 合法形态（列表家族可配）
-	require.Nil(t, ValidateFields([]meta.Field{{Name: "x", Type: "int_list", MaxItems: 50}}))
-	require.Nil(t, ValidateFields([]meta.Field{{Name: "x", Type: "string_list", MaxItems: listMaxItemsMax, MaxLen: 100}}))
+	require.Nil(t, ValidateFields([]meta.Field{{Name: "x", Type: "int_list", MaxListItems: 50}}))
+	require.Nil(t, ValidateFields([]meta.Field{{Name: "x", Type: "string_list", MaxListItems: listMaxItemsMax, MaxChars: 100}}))
 	// max_len 合法形态（上界内可配/0 缺省）
-	require.Nil(t, ValidateFields([]meta.Field{{Name: "x", Type: "string", MaxLen: 1000}}))
+	require.Nil(t, ValidateFields([]meta.Field{{Name: "x", Type: "string", MaxChars: 1000}}))
 	require.Nil(t, ValidateFields([]meta.Field{{Name: "x", Type: "string", MaxLen: stringMaxLenMax}}))
-	require.Nil(t, ValidateFields([]meta.Field{{Name: "x", Type: "string_list", MaxLen: 1}}))
+	require.Nil(t, ValidateFields([]meta.Field{{Name: "x", Type: "string_list", MaxChars: 1}}))
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			err := ValidateFields(c.fields)
@@ -133,4 +133,32 @@ func TestGetRules_ConsistentWithEnforcement(t *testing.T) {
 		require.Nil(t, ValidateFields([]meta.Field{{Name: "x", Type: typ}}))
 	}
 	require.NotNil(t, ValidateFields([]meta.Field{{Name: "x", Type: "boolean"}}))
+}
+
+// 唯一键声明校验（2026-10-27 拍板）：空放行、键须存在、限标量、不得重复。
+func TestValidateUniqueFields(t *testing.T) {
+	fields := []meta.Field{
+		{Name: "ip", Type: "string"},
+		{Name: "qty", Type: "int"},
+		{Name: "tags", Type: "string_list"},
+	}
+	require.Nil(t, ValidateUniqueFields(fields, nil))
+	require.Nil(t, ValidateUniqueFields(fields, []string{"ip"}))
+	require.Nil(t, ValidateUniqueFields(fields, []string{"ip", "qty"}))
+
+	cases := []struct {
+		name   string
+		unique []string
+	}{
+		{"未知字段", []string{"nope"}},
+		{"列表类型作键", []string{"tags"}},
+		{"重复键名", []string{"ip", "ip"}},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			err := ValidateUniqueFields(fields, c.unique)
+			require.NotNil(t, err)
+			require.Equal(t, 422, err.HTTP)
+		})
+	}
 }

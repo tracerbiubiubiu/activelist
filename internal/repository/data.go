@@ -92,6 +92,37 @@ func InsertDoc(ctx context.Context, q dbtx, typeName string, data []byte, operat
 	return d, nil
 }
 
+// FindActiveDupID 唯一键查重（2026-10-27 所有者提出——多源汇聚整体去重）：
+// 按声明的唯一键字段组装 JSONB 包含查询，返回首个同键活跃行 id。
+// excludeID 排除自身（更新/恢复场景；插入传 0——id 序列从 1 起，恒不匹配）。
+// 任一唯一键字段在 data 中缺失或为 null → 不查重返回 false（缺键行不去重——
+// 否则全部缺键行互为重复；登记为第一档已知语义）。
+func FindActiveDupID(ctx context.Context, q dbtx, typeName string, uniqueFields []string, data map[string]any, excludeID int64) (int64, bool, error) {
+	key := make(map[string]any, len(uniqueFields))
+	for _, k := range uniqueFields {
+		v, ok := data[k]
+		if !ok || v == nil {
+			return 0, false, nil
+		}
+		key[k] = v
+	}
+	raw, err := json.Marshal(key)
+	if err != nil {
+		return 0, false, apperr.New(500, apperr.CodeInternal, "唯一键序列化失败")
+	}
+	var id int64
+	err = q.QueryRow(ctx,
+		`SELECT id FROM "`+typeName+`" WHERE status = 'active' AND data @> $1 AND id <> $2 LIMIT 1`,
+		raw, excludeID).Scan(&id)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return 0, false, nil
+	}
+	if err != nil {
+		return 0, false, apperr.New(500, apperr.CodeInternal, "唯一键查重失败")
+	}
+	return id, true, nil
+}
+
 // GetDocByID 单查（不过滤 status：软删行按 id 可见——审计对账与恢复操作入口，§7）。
 func GetDocByID(ctx context.Context, q dbtx, typeName string, id int64) (*Document, error) {
 	d, err := scanDoc(q.QueryRow(ctx,

@@ -68,7 +68,7 @@ func checkValue(f meta.Field, v any) *apperr.Error {
 		}
 		if n := utf8.RuneCountInString(s); n > stringLimit(f) {
 			return invalid("字段值超长（上限 "+strconv.Itoa(stringLimit(f))+" 字符）").
-				WithDetail("field", f.Name).WithDetail("length", n).WithDetail("max_len", stringLimit(f))
+				WithDetail("field", f.Name).WithDetail("length", n).WithDetail("max_chars", stringLimit(f))
 		}
 	case "int_list":
 		list, ok := v.([]any)
@@ -77,7 +77,7 @@ func checkValue(f meta.Field, v any) *apperr.Error {
 		}
 		if n := len(list); n > listLimit(f) {
 			return invalid("列表项数超限（上限 "+strconv.Itoa(listLimit(f))+" 项）").
-				WithDetail("field", f.Name).WithDetail("count", n).WithDetail("max_items", listLimit(f))
+				WithDetail("field", f.Name).WithDetail("count", n).WithDetail("max_list_items", listLimit(f))
 		}
 		for i, el := range list {
 			if !isJSONInt(el) {
@@ -92,7 +92,7 @@ func checkValue(f meta.Field, v any) *apperr.Error {
 		}
 		if n := len(list); n > listLimit(f) {
 			return invalid("列表项数超限（上限 "+strconv.Itoa(listLimit(f))+" 项）").
-				WithDetail("field", f.Name).WithDetail("count", n).WithDetail("max_items", listLimit(f))
+				WithDetail("field", f.Name).WithDetail("count", n).WithDetail("max_list_items", listLimit(f))
 		}
 		for i, el := range list {
 			s, ok := el.(string)
@@ -109,19 +109,19 @@ func checkValue(f meta.Field, v any) *apperr.Error {
 	return nil
 }
 
-// stringLimit 字段生效的字符上限（Field.MaxLen=0=缺省 stringMaxLenDefault——
+// stringLimit 字段生效的字符上限（Field.MaxChars=0=缺省 stringMaxCharsDefault——
 // 存量 schema 无此列时自动兜底；数据校验与注册校验同源常量，无第二份副本）。
 func stringLimit(f meta.Field) int {
-	if f.MaxLen > 0 {
-		return f.MaxLen
+	if f.MaxChars > 0 {
+		return f.MaxChars
 	}
-	return stringMaxLenDefault
+	return stringMaxCharsDefault
 }
 
-// listLimit 字段生效的项数上限（Field.MaxItems=0=缺省 listMaxItemsDefault，同上兜底口径）。
+// listLimit 字段生效的项数上限（Field.MaxListItems=0=缺省 listMaxItemsDefault，同上兜底口径）。
 func listLimit(f meta.Field) int {
-	if f.MaxItems > 0 {
-		return f.MaxItems
+	if f.MaxListItems > 0 {
+		return f.MaxListItems
 	}
 	return listMaxItemsDefault
 }

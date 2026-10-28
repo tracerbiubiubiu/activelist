@@ -24,18 +24,18 @@ const (
 	fieldNameMaxLen = 63 // PG 标识符上限
 	forbiddenPrefix = "pg_"
 
-	// stringMaxLenDefault string/string_list 单值字符上限缺省（2026-10-27 所有者
+	// stringMaxCharsDefault string/string_list 单值字符上限缺省（2026-10-27 所有者
 	// 拍板：255 字符起步——拦「整篇文章贴进来」级事故，业务上足够宽松）；
-	// Field.MaxLen=0（存量 schema 未配置）回退此值。字符数=Runes 非字节。
-	stringMaxLenDefault = 255
-	// stringMaxLenMax 注册时可配置的 max_len 上界（资源防护硬顶，防「配置出
+	// Field.MaxChars=0（存量 schema 未配置）回退此值。字符数=Runes 非字节。
+	stringMaxCharsDefault = 255
+	// stringMaxCharsMax 注册时可配置的 max_chars 上界（资源防护硬顶，防「配置出
 	// 一个 GB 级上限」架空护栏——与导入端点 1GiB MaxBytesReader 同哲学）。
-	stringMaxLenMax = 65535
+	stringMaxCharsMax = 65535
 
 	// listMaxItemsDefault int_list/string_list 项数上限缺省（2026-10-27 同批拍板：
 	// 100 项起步——拦「整列粘贴」级事故；正当大清单走字段级 max_items 配置）。
 	listMaxItemsDefault = 100
-	// listMaxItemsMax 项数可配置上界（同 stringMaxLenMax 资源硬顶哲学）。
+	// listMaxItemsMax 项数可配置上界（同 stringMaxCharsMax 资源硬顶哲学）。
 	listMaxItemsMax = 65535
 )
 
@@ -97,17 +97,48 @@ type NameRule struct {
 
 // FieldRules 字段定义集合规则。
 type FieldRules struct {
-	NamePattern         string   `json:"name_pattern"`           // 字段名正则
-	NamePatternDesc     string   `json:"name_pattern_desc"`      // 人读描述
-	NameMaxLength       int      `json:"name_max_length"`        // 含首字符总长上限
-	ReservedFields      []string `json:"reserved_fields"`        // 保留字段禁用清单
-	AllowedTypes        []string `json:"allowed_types"`          // 允许的字段类型
-	MinFields           int      `json:"min_fields"`             // 最少字段数
-	NoDuplicate         bool     `json:"no_duplicate"`           // 禁止重复字段名
-	StringMaxLenDefault int      `json:"string_max_len_default"` // string/string_list 单值字符上限缺省
-	StringMaxLenMax     int      `json:"string_max_len_max"`     // max_len 可配置上界
-	ListMaxItemsDefault int      `json:"list_max_items_default"` // int_list/string_list 项数上限缺省
-	ListMaxItemsMax     int      `json:"list_max_items_max"`     // max_items 可配置上界
+	NamePattern           string   `json:"name_pattern"`             // 字段名正则
+	NamePatternDesc       string   `json:"name_pattern_desc"`        // 人读描述
+	NameMaxLength         int      `json:"name_max_length"`          // 含首字符总长上限
+	ReservedFields        []string `json:"reserved_fields"`          // 保留字段禁用清单
+	AllowedTypes          []string `json:"allowed_types"`            // 允许的字段类型
+	MinFields             int      `json:"min_fields"`               // 最少字段数
+	NoDuplicate           bool     `json:"no_duplicate"`             // 禁止重复字段名
+	StringMaxCharsDefault int      `json:"string_max_chars_default"` // string/string_list 单值字符上限缺省
+	StringMaxCharsMax     int      `json:"string_max_chars_max"`     // max_chars 可配置上界
+	ListMaxItemsDefault   int      `json:"list_max_items_default"`   // int_list/string_list 项数上限缺省
+	ListMaxItemsMax       int      `json:"list_max_items_max"`       // max_items 可配置上界
+}
+
+// ValidateUniqueFields 唯一键声明校验（2026-10-27 所有者提出——多源汇聚整体
+// 去重）：空=无唯一约束放行；每个键须为 schema 中存在的**标量**字段
+// （int/string——列表类型作唯一键语义复杂，第一档排除）且不得重复出现。
+func ValidateUniqueFields(fields []meta.Field, unique []string) *apperr.Error {
+	if len(unique) == 0 {
+		return nil
+	}
+	known := make(map[string]meta.Field, len(fields))
+	for _, f := range fields {
+		known[f.Name] = f
+	}
+	seen := map[string]bool{}
+	for _, name := range unique {
+		f, ok := known[name]
+		if !ok {
+			return invalid("唯一键字段不存在: "+name).
+				WithDetail("field", name)
+		}
+		if f.Type == "int_list" || f.Type == "string_list" {
+			return invalid("列表类型字段不可作唯一键（仅 int/string）").
+				WithDetail("field", name).WithDetail("type", f.Type)
+		}
+		if seen[name] {
+			return invalid("唯一键字段重复: "+name).
+				WithDetail("field", name)
+		}
+		seen[name] = true
+	}
+	return nil
 }
 
 // reservedFieldsList 保留字段清单（错误消息展示用，人读友好序）。
@@ -130,17 +161,17 @@ func GetRules() Rules {
 			ForbiddenPrefix: []string{forbiddenPrefix},
 		},
 		Fields: FieldRules{
-			NamePattern:         fieldNamePattern,
-			NamePatternDesc:     "小写字母开头，仅小写字母/数字/下划线",
-			NameMaxLength:       fieldNameMaxLen,
-			ReservedFields:      sortedKeys(reservedFields),
-			AllowedTypes:        sortedKeys(fieldTypes),
-			MinFields:           1,
-			NoDuplicate:         true,
-			StringMaxLenDefault: stringMaxLenDefault,
-			StringMaxLenMax:     stringMaxLenMax,
-			ListMaxItemsDefault: listMaxItemsDefault,
-			ListMaxItemsMax:     listMaxItemsMax,
+			NamePattern:           fieldNamePattern,
+			NamePatternDesc:       "小写字母开头，仅小写字母/数字/下划线",
+			NameMaxLength:         fieldNameMaxLen,
+			ReservedFields:        sortedKeys(reservedFields),
+			AllowedTypes:          sortedKeys(fieldTypes),
+			MinFields:             1,
+			NoDuplicate:           true,
+			StringMaxCharsDefault: stringMaxCharsDefault,
+			StringMaxCharsMax:     stringMaxCharsMax,
+			ListMaxItemsDefault:   listMaxItemsDefault,
+			ListMaxItemsMax:       listMaxItemsMax,
 		},
 	}
 }
@@ -187,27 +218,27 @@ func ValidateFields(fields []meta.Field) *apperr.Error {
 			return invalid("字段类型非法（允许 int / string / int_list / string_list）").
 				WithDetail("field", f.Name).WithDetail("value", f.Type)
 		}
-		// max_len 仅 string/string_list 可配（int 家族无长度概念——语义错配在
+		// max_chars 仅 string/string_list 可配（int 家族无长度概念——语义错配在
 		// 注册期拒绝，不静默忽略；0=缺省合法）
-		if f.MaxLen != 0 {
+		if f.MaxChars != 0 {
 			if f.Type == "int" || f.Type == "int_list" {
-				return invalid("int 类型字段不支持 max_len（长度上限仅作用于 string/string_list）").
-					WithDetail("field", f.Name).WithDetail("max_len", f.MaxLen)
+				return invalid("int 类型字段不支持 max_chars（长度上限仅作用于 string/string_list）").
+					WithDetail("field", f.Name).WithDetail("max_chars", f.MaxChars)
 			}
-			if f.MaxLen < 0 || f.MaxLen > stringMaxLenMax {
-				return invalid("max_len 超界（1–"+strconv.Itoa(stringMaxLenMax)+"，0=缺省 "+strconv.Itoa(stringMaxLenDefault)+"）").
-					WithDetail("field", f.Name).WithDetail("max_len", f.MaxLen)
+			if f.MaxChars < 0 || f.MaxChars > stringMaxCharsMax {
+				return invalid("max_chars 超界（1–"+strconv.Itoa(stringMaxCharsMax)+"，0=缺省 "+strconv.Itoa(stringMaxCharsDefault)+"）").
+					WithDetail("field", f.Name).WithDetail("max_chars", f.MaxChars)
 			}
 		}
 		// max_items 仅 int_list/string_list 可配（同上语义错配口径）
-		if f.MaxItems != 0 {
+		if f.MaxListItems != 0 {
 			if f.Type == "int" || f.Type == "string" {
-				return invalid("非列表类型字段不支持 max_items（项数上限仅作用于 int_list/string_list）").
-					WithDetail("field", f.Name).WithDetail("max_items", f.MaxItems)
+				return invalid("非列表类型字段不支持 max_list_items（项数上限仅作用于 int_list/string_list）").
+					WithDetail("field", f.Name).WithDetail("max_list_items", f.MaxListItems)
 			}
-			if f.MaxItems < 0 || f.MaxItems > listMaxItemsMax {
-				return invalid("max_items 超界（1–"+strconv.Itoa(listMaxItemsMax)+"，0=缺省 "+strconv.Itoa(listMaxItemsDefault)+"）").
-					WithDetail("field", f.Name).WithDetail("max_items", f.MaxItems)
+			if f.MaxListItems < 0 || f.MaxListItems > listMaxItemsMax {
+				return invalid("max_list_items 超界（1–"+strconv.Itoa(listMaxItemsMax)+"，0=缺省 "+strconv.Itoa(listMaxItemsDefault)+"）").
+					WithDetail("field", f.Name).WithDetail("max_list_items", f.MaxListItems)
 			}
 		}
 		if seen[f.Name] {

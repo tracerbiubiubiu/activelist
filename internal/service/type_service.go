@@ -15,8 +15,9 @@ import (
 
 // RegisterInput 注册请求（POST /api/v1/admin/types body）。
 type RegisterInput struct {
-	TypeName string       `json:"type_name"`
-	Fields   []meta.Field `json:"fields"`
+	TypeName     string       `json:"type_name"`
+	Fields       []meta.Field `json:"fields"`
+	UniqueFields []string     `json:"unique_fields"` // 唯一键（标量组合，空=无唯一约束）
 }
 
 // TypeService 类型管理服务。
@@ -35,6 +36,9 @@ func (s *TypeService) Register(ctx context.Context, in RegisterInput, operator s
 	if err := validation.ValidateFields(in.Fields); err != nil {
 		return nil, err
 	}
+	if err := validation.ValidateUniqueFields(in.Fields, in.UniqueFields); err != nil {
+		return nil, err
+	}
 
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
@@ -42,13 +46,13 @@ func (s *TypeService) Register(ctx context.Context, in RegisterInput, operator s
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 
-	if err := meta.InsertType(ctx, tx, s.pool, in.TypeName, in.Fields, operator); err != nil {
+	if err := meta.InsertType(ctx, tx, s.pool, in.TypeName, in.Fields, in.UniqueFields, operator); err != nil {
 		return nil, err
 	}
 	if err := repository.CreateTableIfNotExists(ctx, tx, in.TypeName); err != nil {
 		return nil, err
 	}
-	if err := meta.InsertHistory(ctx, tx, in.TypeName, "register", in.Fields, operator); err != nil {
+	if err := meta.InsertHistory(ctx, tx, in.TypeName, "register", in.Fields, in.UniqueFields, operator); err != nil {
 		return nil, err
 	}
 	if err := tx.Commit(ctx); err != nil {
@@ -61,9 +65,10 @@ func (s *TypeService) Register(ctx context.Context, in RegisterInput, operator s
 // type_name 入 body，P4-W5 前置批整改）。
 // 全量定义、非字段级 merge（§7）；version 为元数据行乐观锁。
 type EvolveInput struct {
-	TypeName string       `json:"type_name" binding:"required"`
-	Fields   []meta.Field `json:"fields"`
-	Version  int64        `json:"version" binding:"required"`
+	TypeName     string       `json:"type_name" binding:"required"`
+	Fields       []meta.Field `json:"fields"`
+	UniqueFields []string     `json:"unique_fields"` // 唯一键（标量组合，空=无唯一约束）
+	Version      int64        `json:"version" binding:"required"`
 }
 
 // Evolve schema 演进（M-A4；方案 D）：全量定义校验 → [事务：乐观锁替换 + 历史] →
@@ -72,6 +77,9 @@ type EvolveInput struct {
 // 废弃类型拒绝演进（终态不再扩 schema）；不存在 404；版本不匹配 409 须重读重提。
 func (s *TypeService) Evolve(ctx context.Context, typeName string, in EvolveInput, operator string) (*meta.Definition, error) {
 	if err := validation.ValidateFields(in.Fields); err != nil {
+		return nil, err
+	}
+	if err := validation.ValidateUniqueFields(in.Fields, in.UniqueFields); err != nil {
 		return nil, err
 	}
 	cur, err := meta.GetByName(ctx, s.pool, typeName)
@@ -89,7 +97,7 @@ func (s *TypeService) Evolve(ctx context.Context, typeName string, in EvolveInpu
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 
-	moved, err := meta.UpdateSchema(ctx, tx, typeName, in.Fields, in.Version, operator)
+	moved, err := meta.UpdateSchema(ctx, tx, typeName, in.Fields, in.UniqueFields, in.Version, operator)
 	if err != nil {
 		return nil, err
 	}
@@ -111,7 +119,7 @@ func (s *TypeService) Evolve(ctx context.Context, typeName string, in EvolveInpu
 			WithDetail("expected_version", in.Version).
 			WithDetail("current_version", latest.Version)
 	}
-	if err := meta.InsertHistory(ctx, tx, typeName, "evolve", in.Fields, operator); err != nil {
+	if err := meta.InsertHistory(ctx, tx, typeName, "evolve", in.Fields, in.UniqueFields, operator); err != nil {
 		return nil, err
 	}
 	if err := tx.Commit(ctx); err != nil {
@@ -166,7 +174,7 @@ func (s *TypeService) Deprecate(ctx context.Context, typeName, operator string) 
 			if err != nil {
 				return nil, err
 			}
-			if err := meta.InsertHistory(ctx, tx, typeName, "deprecate", cur.Fields, operator); err != nil {
+			if err := meta.InsertHistory(ctx, tx, typeName, "deprecate", cur.Fields, cur.UniqueFields, operator); err != nil {
 				return nil, err
 			}
 		}
