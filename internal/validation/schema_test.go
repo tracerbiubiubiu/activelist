@@ -83,14 +83,14 @@ func TestValidateFields(t *testing.T) {
 	}
 	// max_len 合法形态（上界内可配/0 缺省）
 	require.Nil(t, ValidateFields([]meta.Field{{Name: "x", Type: "string", MaxChars: 1000}}))
-	require.Nil(t, ValidateFields([]meta.Field{{Name: "x", Type: "string", MaxLen: stringMaxLenMax}}))
+	require.Nil(t, ValidateFields([]meta.Field{{Name: "x", Type: "string", MaxChars: stringMaxCharsMax}}))
 	require.Nil(t, ValidateFields([]meta.Field{{Name: "x", Type: "string_list", MaxChars: 1}}))
 	// max_items 合法形态（列表家族可配）
 	require.Nil(t, ValidateFields([]meta.Field{{Name: "x", Type: "int_list", MaxListItems: 50}}))
 	require.Nil(t, ValidateFields([]meta.Field{{Name: "x", Type: "string_list", MaxListItems: listMaxItemsMax, MaxChars: 100}}))
 	// max_len 合法形态（上界内可配/0 缺省）
 	require.Nil(t, ValidateFields([]meta.Field{{Name: "x", Type: "string", MaxChars: 1000}}))
-	require.Nil(t, ValidateFields([]meta.Field{{Name: "x", Type: "string", MaxLen: stringMaxLenMax}}))
+	require.Nil(t, ValidateFields([]meta.Field{{Name: "x", Type: "string", MaxChars: stringMaxCharsMax}}))
 	require.Nil(t, ValidateFields([]meta.Field{{Name: "x", Type: "string_list", MaxChars: 1}}))
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
