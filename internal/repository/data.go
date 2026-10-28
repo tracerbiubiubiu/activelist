@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"errors"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -196,20 +197,55 @@ func UpdateDocStatus(ctx context.Context, q dbtx, typeName string, id int64, fro
 }
 
 // ListDocs 列表：默认仅 active 行（软删排除），includeDeleted 时 active+deleted 混排；
+// ListFilter 列表筛选（2026-10-28 所有者提出——活动数据搜索/筛选能力）：
+// Keyword 关键字对 ScalarFields 全部标量字段做 ILIKE 模糊（OR 组合，转义由
+// 本层 escapeLike 处理）；Field/Value 单字段精确匹配（data->>'f' 文本相等）。
+// 空结构 = 不过滤。字段名合法性（存在/标量）由 service 层按 schema 校验。
+type ListFilter struct {
+	Keyword      string
+	Field        string
+	Value        string
+	ScalarFields []string
+}
+
+// escapeLike ILIKE 通配符转义（% _ \——用户输入原样匹配，不当通配符）。
+func escapeLike(s string) string {
+	r := strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`)
+	return r.Replace(s)
+}
+
 // created_at DESC + id DESC、keyset 游标按完整排序键比较（混排下游标语义不变——
 // 排序键与行状态无关）、LIMIT 硬上限（offset 深翻页在百万行下不可用，不提供）。
-func ListDocs(ctx context.Context, q dbtx, typeName string, cur *Cursor, limit int, includeDeleted bool) ([]Document, error) {
-	statuses := []any{RowStatusActive}
-	if includeDeleted {
-		statuses = append(statuses, RowStatusDeleted)
+// 筛选条件与游标共用动态占位编号（args 顺序即 $n 顺序）。
+func ListDocs(ctx context.Context, q dbtx, typeName string, cur *Cursor, limit int, includeDeleted bool, filter *ListFilter) ([]Document, error) {
+	conds := []string{`status = ANY($1)`}
+	args := []any{func() any {
+		statuses := []any{RowStatusActive}
+		if includeDeleted {
+			statuses = append(statuses, RowStatusDeleted)
+		}
+		return statuses
+	}()}
+	if filter != nil && filter.Keyword != "" && len(filter.ScalarFields) > 0 {
+		args = append(args, "%"+escapeLike(filter.Keyword)+"%")
+		n := len(args)
+		ors := make([]string, 0, len(filter.ScalarFields))
+		for _, f := range filter.ScalarFields {
+			ors = append(ors, `(data->>'`+f+`') ILIKE $`+strconv.Itoa(n)+` ESCAPE '\'`)
+		}
+		conds = append(conds, "("+strings.Join(ors, " OR ")+")")
 	}
-	sql := `SELECT ` + docCols + ` FROM "` + typeName + `" WHERE status = ANY($1)`
-	args := []any{statuses}
+	if filter != nil && filter.Field != "" {
+		args = append(args, filter.Value)
+		conds = append(conds, `(data->>'`+filter.Field+`') = $`+strconv.Itoa(len(args)))
+	}
 	if cur != nil {
-		sql += ` AND (created_at, id) < ($2, $3)`
 		args = append(args, cur.CreatedAt, cur.ID)
+		n := len(args)
+		conds = append(conds, `(created_at, id) < ($`+strconv.Itoa(n-1)+`, $`+strconv.Itoa(n)+`)`)
 	}
-	sql += ` ORDER BY created_at DESC, id DESC LIMIT $` + strconv.Itoa(len(args)+1)
+	sql := `SELECT ` + docCols + ` FROM "` + typeName + `" WHERE ` + strings.Join(conds, " AND ") +
+		` ORDER BY created_at DESC, id DESC LIMIT $` + strconv.Itoa(len(args)+1)
 	args = append(args, limit)
 
 	rows, err := q.Query(ctx, sql, args...)

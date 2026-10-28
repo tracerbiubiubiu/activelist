@@ -20,7 +20,9 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/stretchr/testify/require"
 
+	"github.com/tracerbiubiubiu/activelist/internal/apperr"
 	"github.com/tracerbiubiubiu/activelist/internal/handler"
+	"github.com/tracerbiubiubiu/activelist/internal/meta"
 	"github.com/tracerbiubiubiu/activelist/internal/repository"
 	"github.com/tracerbiubiubiu/activelist/internal/service"
 )
@@ -82,7 +84,7 @@ func TestA2_CRUDLifecycle(t *testing.T) {
 	for i := 0; i < 4; i++ {
 		insertDoc(t, dsvc, "inv_item", i+10, fmt.Sprintf("n%d", i))
 	}
-	docs, err := dsvc.List(ctx, "inv_item", nil, 100, false)
+	docs, err := dsvc.List(ctx, "inv_item", nil, 100, false, service.ListFilter{})
 	require.NoError(t, err)
 	require.Len(t, docs, 5)
 	for i := 1; i < len(docs); i++ {
@@ -95,7 +97,7 @@ func TestA2_CRUDLifecycle(t *testing.T) {
 	var walked []int64
 	var cur *repository.Cursor
 	for {
-		page, err := dsvc.List(ctx, "inv_item", cur, 2, false)
+		page, err := dsvc.List(ctx, "inv_item", cur, 2, false, service.ListFilter{})
 		require.NoError(t, err)
 		for _, d := range page {
 			walked = append(walked, d.ID)
@@ -131,7 +133,7 @@ func TestA2_SoftDeleteFlow(t *testing.T) {
 	require.EqualValues(t, 2, del.Version) // 状态迁移同样递增版本（旧文档立即过期）
 
 	// 列表排除软删行
-	docs, err := dsvc.List(ctx, "soft_item", nil, 100, false)
+	docs, err := dsvc.List(ctx, "soft_item", nil, 100, false, service.ListFilter{})
 	require.NoError(t, err)
 	require.Empty(t, docs)
 
@@ -187,13 +189,13 @@ func TestList_IncludeDeleted(t *testing.T) {
 	require.NoError(t, err)
 
 	// 缺省：软删排除（仅 b）
-	activeOnly, err := dsvc.List(ctx, "incl_item", nil, 100, false)
+	activeOnly, err := dsvc.List(ctx, "incl_item", nil, 100, false, service.ListFilter{})
 	require.NoError(t, err)
 	require.Len(t, activeOnly, 1)
 	require.Equal(t, docB.ID, activeOnly[0].ID)
 
 	// 混排：b(active) 前 a(deleted) 后（created_at DESC），状态各归其位
-	mixed, err := dsvc.List(ctx, "incl_item", nil, 100, true)
+	mixed, err := dsvc.List(ctx, "incl_item", nil, 100, true, service.ListFilter{})
 	require.NoError(t, err)
 	require.Len(t, mixed, 2)
 	require.Equal(t, docB.ID, mixed[0].ID)
@@ -204,7 +206,7 @@ func TestList_IncludeDeleted(t *testing.T) {
 	// 恢复后缺省列表回到 2 行全 active
 	_, err = dsvc.Restore(ctx, "incl_item", docA.ID, "system")
 	require.NoError(t, err)
-	activeOnly, err = dsvc.List(ctx, "incl_item", nil, 100, false)
+	activeOnly, err = dsvc.List(ctx, "incl_item", nil, 100, false, service.ListFilter{})
 	require.NoError(t, err)
 	require.Len(t, activeOnly, 2)
 }
@@ -463,4 +465,99 @@ func TestList_NextCursorWireFormIsString(t *testing.T) {
 	require.NotNil(t, env.Data.NextCursor, "满页必出 next_cursor")
 	require.IsType(t, "", env.Data.NextCursor.AfterID, "after_id 必须字符串出站（契约审计 B1）")
 	require.Equal(t, "2", env.Data.NextCursor.AfterID)
+}
+
+// 列表搜索/筛选（2026-10-28 所有者提出）：q 全标量字段模糊（转义+跨字段 OR）/
+// field+value 单字段精确（成对校验）/未知与列表字段 422/与游标分页叠加。
+func TestList_SearchFilter(t *testing.T) {
+	pool, tsvc := setupPG(t)
+	dsvc := newDataSvc(pool)
+	ctx := context.Background()
+	const name = "zz_filt"
+
+	_, err := tsvc.Register(ctx, service.RegisterInput{
+		TypeName: name,
+		Fields: []meta.Field{
+			{Name: "title", Type: "string"},
+			{Name: "qty", Type: "int"},
+			{Name: "tags", Type: "string_list"},
+		},
+	}, "system")
+	require.NoError(t, err)
+	rows := []map[string]any{
+		{"title": "alpha 报障", "qty": float64(1), "tags": []any{"a"}},
+		{"title": "beta 巡检", "qty": float64(22), "tags": []any{"b"}},
+		{"title": "alpha 复盘", "qty": float64(3), "tags": []any{"c"}},
+	}
+	for _, r := range rows {
+		_, err := dsvc.Insert(ctx, name, service.InsertInput{Data: r}, "system")
+		require.NoError(t, err)
+	}
+
+	t.Run("q 命中多行（跨字段单行 OR——alpha 两行）", func(t *testing.T) {
+		docs, err := dsvc.List(ctx, name, nil, 100, false, service.ListFilter{Keyword: "alpha"})
+		require.NoError(t, err)
+		require.Len(t, docs, 2)
+	})
+	t.Run("q 无匹配返回空", func(t *testing.T) {
+		docs, err := dsvc.List(ctx, name, nil, 100, false, service.ListFilter{Keyword: "gamma"})
+		require.NoError(t, err)
+		require.Empty(t, docs)
+	})
+	t.Run("q ILIKE 通配符按字面匹配（% 不当通配符）", func(t *testing.T) {
+		docs, err := dsvc.List(ctx, name, nil, 100, false, service.ListFilter{Keyword: "%"})
+		require.NoError(t, err)
+		require.Empty(t, docs)
+	})
+	t.Run("field+value 精确（int 文本相等）", func(t *testing.T) {
+		docs, err := dsvc.List(ctx, name, nil, 100, false, service.ListFilter{Field: "qty", Value: "22"})
+		require.NoError(t, err)
+		require.Len(t, docs, 1)
+		require.EqualValues(t, 22, docs[0].Data["qty"])
+	})
+	t.Run("q+field 组合叠加", func(t *testing.T) {
+		docs, err := dsvc.List(ctx, name, nil, 100, false, service.ListFilter{Keyword: "alpha", Field: "qty", Value: "3"})
+		require.NoError(t, err)
+		require.Len(t, docs, 1)
+	})
+	t.Run("field 未提供 value → 422", func(t *testing.T) {
+		_, err := dsvc.List(ctx, name, nil, 100, false, service.ListFilter{Field: "title"})
+		require.NotNil(t, err)
+		require.Equal(t, 422, err.(*apperr.Error).HTTP)
+	})
+	t.Run("未知筛选字段 → 422", func(t *testing.T) {
+		_, err := dsvc.List(ctx, name, nil, 100, false, service.ListFilter{Field: "nope", Value: "x"})
+		require.NotNil(t, err)
+		require.Equal(t, 422, err.(*apperr.Error).HTTP)
+	})
+	t.Run("列表类型字段不可筛选 → 422", func(t *testing.T) {
+		_, err := dsvc.List(ctx, name, nil, 100, false, service.ListFilter{Field: "tags", Value: "a"})
+		require.NotNil(t, err)
+		require.Equal(t, 422, err.(*apperr.Error).HTTP)
+	})
+	t.Run("关键字超 100 字符 → 422", func(t *testing.T) {
+		_, err := dsvc.List(ctx, name, nil, 100, false, service.ListFilter{Keyword: strings.Repeat("a", 101)})
+		require.NotNil(t, err)
+		require.Equal(t, 422, err.(*apperr.Error).HTTP)
+	})
+	t.Run("筛选叠加游标翻页不重不漏", func(t *testing.T) {
+		var walked []int64
+		var cur *repository.Cursor
+		for {
+			page, err := dsvc.List(ctx, name, cur, 1, false, service.ListFilter{Keyword: "alpha"})
+			require.NoError(t, err)
+			for _, d := range page {
+				walked = append(walked, d.ID)
+			}
+			if len(page) < 1 {
+				break
+			}
+			last := page[len(page)-1]
+			cur = &repository.Cursor{CreatedAt: last.CreatedAt, ID: last.ID}
+			if len(walked) > 2 {
+				break
+			}
+		}
+		require.Len(t, walked, 2)
+	})
 }

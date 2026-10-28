@@ -73,8 +73,15 @@ func (d *Deps) listData(c *gin.Context) {
 	// include_deleted=true 混入软删行（前端「已删除」灰态+恢复入口的数据面；
 	// 缺省 false 维持仅 active 的既有语义）。仅认 true/1——其余值一律缺省。
 	includeDeleted := c.Query("include_deleted") == "true" || c.Query("include_deleted") == "1"
+	// 搜索/筛选（2026-10-28）：q=关键字（全标量字段模糊）；field+value=单字段
+	// 精确（成对；合法性由 service 按 schema 校验——未知/列表字段 422）
+	filt := service.ListFilter{
+		Keyword: c.Query("q"),
+		Field:   c.Query("field"),
+		Value:   c.Query("value"),
+	}
 
-	docs, err := d.Data.List(c.Request.Context(), c.Param("typeName"), cur, pageSize, includeDeleted)
+	docs, err := d.Data.List(c.Request.Context(), c.Param("typeName"), cur, pageSize, includeDeleted, filt)
 	if err != nil {
 		Fail(c, asAppErr(err))
 		return

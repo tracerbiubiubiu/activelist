@@ -121,10 +121,20 @@ func (s *DataService) Get(ctx context.Context, typeName string, id int64) (*repo
 	return repository.GetDocByID(ctx, s.pool, def.TypeName, id)
 }
 
+// ListFilter 列表筛选入参（2026-10-28 所有者提出——活动数据搜索/筛选）：
+// Keyword 全标量字段 ILIKE 模糊；Field+Value 单字段精确（成对出现）。
+type ListFilter struct {
+	Keyword string
+	Field   string
+	Value   string
+}
+
 // List 列表（默认仅 active 行；includeDeleted 时混入软删行——前端「已删除」灰态+
 // 恢复入口的数据面，2026-10-08。keyset 游标语义见 repository.Cursor）。limit 在本层
 // 再钳制一次——PG `LIMIT -1` 语义为不限行，直调方传非正值不得放大查询。
-func (s *DataService) List(ctx context.Context, typeName string, cur *repository.Cursor, pageSize int, includeDeleted bool) ([]repository.Document, error) {
+// 筛选：Keyword 对全部标量字段模糊；Field+Value 单字段精确——字段须存在且为
+// 标量（未知/列表类型 422），成对出现缺一即 422；Keyword ≤100 字符。
+func (s *DataService) List(ctx context.Context, typeName string, cur *repository.Cursor, pageSize int, includeDeleted bool, filt ListFilter) ([]repository.Document, error) {
 	def, err := s.gateType(ctx, typeName, false)
 	if err != nil {
 		return nil, err
@@ -135,7 +145,40 @@ func (s *DataService) List(ctx context.Context, typeName string, cur *repository
 	if pageSize > s.pageSizeMax {
 		pageSize = s.pageSizeMax
 	}
-	return repository.ListDocs(ctx, s.pool, def.TypeName, cur, pageSize, includeDeleted)
+	filt.Keyword = strings.TrimSpace(filt.Keyword)
+	if len(filt.Keyword) > 100 {
+		return nil, apperr.New(422, apperr.CodeValidation, "关键字 ≤100 字符").
+			WithDetail("field", "q")
+	}
+	scalar := make([]string, 0, len(def.Fields))
+	for _, f := range def.Fields {
+		if f.Type == "int" || f.Type == "string" {
+			scalar = append(scalar, f.Name)
+		}
+	}
+	if (filt.Field != "") != (filt.Value != "") {
+		return nil, apperr.New(422, apperr.CodeValidation, "field 与 value 须成对提供").
+			WithDetail("field", "field")
+	}
+	if filt.Field != "" {
+		var hit *meta.Field
+		for i := range def.Fields {
+			if def.Fields[i].Name == filt.Field {
+				hit = &def.Fields[i]
+				break
+			}
+		}
+		if hit == nil {
+			return nil, apperr.New(422, apperr.CodeValidation, "筛选字段不存在: "+filt.Field).
+				WithDetail("field", filt.Field)
+		}
+		if hit.Type != "int" && hit.Type != "string" {
+			return nil, apperr.New(422, apperr.CodeValidation, "列表类型字段不可筛选（仅 int/string）").
+				WithDetail("field", filt.Field).WithDetail("type", hit.Type)
+		}
+	}
+	rf := &repository.ListFilter{Keyword: filt.Keyword, Field: filt.Field, Value: filt.Value, ScalarFields: scalar}
+	return repository.ListDocs(ctx, s.pool, def.TypeName, cur, pageSize, includeDeleted, rf)
 }
 
 // Update 更新数据（读-合并-全量校验-乐观锁；A2/A4）。
