@@ -24,8 +24,8 @@
 
 - [activelist.md](./docs/activelist.md) —— 原始完整设计方案（2466 行，正文为历史方案）+ 头部**收敛声明 · 最终画像 · 设计定稿补充（设计 SSOT）**
 - [implementation-plan.md](./docs/implementation-plan.md) —— **实现计划（M-A）：目标/非目标、验收标准、里程碑、API 修订清单、代码目录、配置（实现 SSOT）**
-- [activelist-review.md](./docs/activelist-review.md) —— 方案评审（**历史**：针对收敛前方案；数据模型侧发现仍可参考）
-- [ADR-003-integration-contract.md](./docs/ADR-003-integration-contract.md) —— 与 zhuzhao 集成契约（**SSOT，2026-09-03 起以本项目为准**；含对 zhuzhao 能力需求汇总；zhuzhao 侧 `docs/adr/ADR-003` 为镜像）
+- [activelist-review.md](./deliverables/activelist-review.md) —— 方案评审（**历史**：针对收敛前方案；数据模型侧发现仍可参考）
+- [ADR-003-integration-contract.md](./docs/ADR-003-integration-contract.md) —— 与 zhuzhao 集成契约（**SSOT，2026-09-03 起以本项目为准**；含对 zhuzhao 能力需求汇总；zhuzhao 侧 `docs/adr/ADR-003-activelist-integration-form.md` 为镜像）
 
 ## 与 zhuzhao 的关系
 
@@ -68,3 +68,7 @@ docker compose -f deploy/compose.prod.yaml exec apiserver \
 - 2026-09-29（P4 W5 前置批）：三端点 zhuzhao 风格整改——`/deprecate`·`/schema`·`/restore` 标识入 body 路径静态动词段（zhuzhao 000032 迁移同步 menu_apis；消费面零破坏——网关纯透传）；zhuzhao-ui al 两页（types/data：cursor 分页+动态 schema 列+导入导出）已上线消费（Phase 4 收官）
 - 启动前置 ✅ **已就绪**：zhuzhao-utils **v0.4.1 直引无 replace**（activelist 硬依赖 `logger` + `postgres` + `response` + `aksk`）；**部署 fail-closed**：应用对空 SK 拒启（config 层校验，覆盖 `${VAR:-}` 展开为空的形态）；deploy/compose 带 dev-gateway-sk 缺省便于本地起栈，生产务必 env 覆盖
 - 排期归属：zhuzhao Phase 3 主线 **M-A（activelist 独立实现）**，与其他里程碑无链式依赖（2026-09-02 design-decisions §23.2，详见 ADR-003「排期与集成拆分同步」节）
+
+## 提交规范
+
+遵 zhuzhao `docs/standards.md` §12-9（全生态公约）：`type(scope): ` 中文主题行 **≤50 字** + 评审三节正文（为什么改 / 改动摘要 / 验证证据）；本仓机械门禁（commit-lint / .githooks / make hooks）随兄弟仓对齐批落地（2026-11-02 四仓审计登记）。
