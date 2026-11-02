@@ -49,10 +49,10 @@ docker compose -f deploy/compose.prod.yaml up -d --build
 
 # 3. 健康检查（/apiserver 走内部网络；探针免鉴权）
 docker compose -f deploy/compose.prod.yaml exec apiserver \
-  wget -qO- http://127.0.0.1:8080/readyz
+  wget -qO- http://127.0.0.1:18081/readyz
 
 # 4. 签名调用验证（zhuzhao 侧：GATEWAY_AK/GATEWAY_SK 同值 + upstreams
-#    prefix=/al target=http://activelist:8080；经网关 /al/api/v1/... 访问）
+#    prefix=/al target=http://activelist:18081；经网关 /al/api/v1/... 访问）
 ```
 
 - 开发态（本地直跑二进制 + 仅 PG 容器）：`deploy/compose.dev.yaml` + `ACTIVELIST_PG_PORT=15432` + `ACTIVELIST_CALLER_ZHUZHAO_SK`（本地任意非空值，如 dev-gateway-sk——空密钥环拒启）；

@@ -21,5 +21,5 @@ COPY configs/config.yaml /app/config/config.yaml
 # 且 MultiWriter 文件先行会短路 stdout：缺此行 = 部署态全部日志静默丢失）
 RUN mkdir -p /app/logs && chown -R app:app /app
 USER app
-EXPOSE 8080
+EXPOSE 18081
 ENTRYPOINT ["/app/apiserver", "serve", "/app/config/config.yaml"]

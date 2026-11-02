@@ -1,7 +1,7 @@
 # activelist 配置（implementation-plan §6；${VAR:-default} 环境变量展开，
 # 镜像/容器内零文件纯 env 亦可运行——见 internal/config Load）。
 server:
-  port: 8080
+  port: 18081
   read_timeout: 30s
   write_timeout: 300s        # 导入大文件需要长写超时（M-A5）
 

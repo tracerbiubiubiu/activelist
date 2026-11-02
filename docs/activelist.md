@@ -1467,7 +1467,7 @@ Docker network: activelist_internal
 
 Docker network: zhuzhao_to_activelist
   ├── zhuzhao
-  └── activelist-apiserver（仅暴露 8080 端口）
+  └── activelist-apiserver（仅暴露 18081 端口）
 ```
 
 ### 15.3 传输加密
@@ -1650,7 +1650,7 @@ Worker 从 snapshot.updatedBy / snapshot.createdBy 读取 operator
 
 ```yaml
 server:
-  port: 8080
+  port: 18081
   read_timeout: 30s
   write_timeout: 30s
 
@@ -1766,8 +1766,8 @@ proxy/
 ```yaml
 microservices:
   activelist:
-    url: http://activelist-apiserver:8080
-    health: http://activelist-apiserver:8080/healthz
+    url: http://activelist-apiserver:18081
+    health: http://activelist-apiserver:18081/healthz
     timeout: 30s
   # 未来扩展其他微服务
 ```

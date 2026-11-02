@@ -100,7 +100,7 @@ activelist/
 ├── migrations/                # 独立库独立编号（000001 起；与 zhuzhao 迁移号无关）
 ├── configs/config.yaml
 ├── deploy/
-│   ├── compose.prod.yaml      # 部署态：PG + apiserver×2 + pgbackup；双 network，apiserver 仅对 zhuzhao network 暴露 8080
+│   ├── compose.prod.yaml      # 部署态：PG + apiserver×2 + pgbackup；双 network，apiserver 仅对 zhuzhao network 暴露 18081
 │   ├── compose.dev.yaml       # 开发态：仅 PG（apiserver 本地直跑）
 │   └── backup/                # pgbackup 每日备份 + WAL 归档（backup.sh + 恢复步骤 README）
 └── Makefile                   # lint（vet+gofmt）/ fmt / test / test-integration（真 PG）/ build
@@ -117,7 +117,7 @@ activelist/
 
 ```yaml
 server:
-  port: 8080
+  port: 18081
   read_timeout: 30s
   write_timeout: 300s        # 导入大文件需要长写超时
 

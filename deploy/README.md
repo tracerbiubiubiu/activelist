@@ -1,6 +1,6 @@
 # activelist 部署 runbook
 
-> 部署态 = `compose.prod.yaml`（本目录）；开发态 = `compose.dev.yaml`（仅 PG，服务跑宿主 `go run ./cmd/apiserver`@8080）。
+> 部署态 = `compose.prod.yaml`（本目录）；开发态 = `compose.dev.yaml`（仅 PG，服务跑宿主 `go run ./cmd/apiserver`@18081）。
 > 集成契约 SSOT：[ADR-003](../docs/ADR-003-integration-contract.md)；跨仓拼装总 runbook见 zhuzhao 仓 `deployments/README.md`。
 
 ## 快速开始（部署态）
@@ -20,14 +20,14 @@ docker compose -f compose.prod.yaml up -d --build
 
 # 3. 验证
 docker compose -f compose.prod.yaml ps            # 三服务 healthy
-curl http://127.0.0.1:8080/healthz                # 宿主直验需临时映射；栈内验证：
-docker compose -f compose.prod.yaml exec apiserver wget -qO- http://127.0.0.1:8080/healthz
+curl http://127.0.0.1:18081/healthz                # 宿主直验需临时映射；栈内验证：
+docker compose -f compose.prod.yaml exec apiserver wget -qO- http://127.0.0.1:18081/healthz
 ```
 
 ## 与 zhuzhao 的接线（唯一两件事）
 
 1. **网络**：本栈 `zhuzhao_to_activelist`（external）与本栈 apiserver 别名 `activelist`——zhuzhao app 容器须加入同一网络（其 `deployments/docker-compose.yaml` 已默认挂接）。
-2. **密钥对值**：`ACTIVELIST_CALLER_ZHUZHAO_SK` = zhuzhao 侧 `GATEWAY_SK`（HMAC 出站签名验签）。zhuzhao 网关默认 target `http://activelist:8080`，无需改配置。
+2. **密钥对值**：`ACTIVELIST_CALLER_ZHUZHAO_SK` = zhuzhao 侧 `GATEWAY_SK`（HMAC 出站签名验签）。zhuzhao 网关默认 target `http://activelist:18081`，无需改配置。
 
 ## 运维要点
 

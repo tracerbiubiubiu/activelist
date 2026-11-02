@@ -121,7 +121,7 @@ func Load(path string) (*Config, error) {
 			v.SetDefault(key, def)
 		}
 	}
-	bind("server.port", "ACTIVELIST_HTTP_PORT", 8080)
+	bind("server.port", "ACTIVELIST_HTTP_PORT", 18081)
 	bind("server.read_timeout", "ACTIVELIST_HTTP_READ_TIMEOUT", "30s")
 	bind("server.read_header_timeout", "ACTIVELIST_HTTP_READ_HEADER_TIMEOUT", "10s")
 	bind("server.idle_timeout", "ACTIVELIST_HTTP_IDLE_TIMEOUT", "120s")
