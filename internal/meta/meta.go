@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgconn"
 
 	"github.com/tracerbiubiubiu/activelist/internal/apperr"
 )
@@ -75,41 +74,40 @@ func schemaDefJSON(fields []Field, uniqueFields []string) ([]byte, error) {
 // created_by/updated_by 为 X-Operator 断言（M-A6 起真实值，当前 system）；
 // 空串经 COALESCE 回退列默认 'system'——显式 NULL 不触发列 DEFAULT，会 23502。
 //
-// pool 用于 23505 后补查现态：PG 事务内任一语句报错后整个事务进入 aborted
-// 状态（25P02），后续语句一律失败——不可用 tx 补查。pool 为独立连接、新语句，
-// READ COMMITTED 下对已提交的冲突行可见（返回 23505 时冲突方必然已提交）。
-// 补查自身失败时退回通用 409（不向外抛 500，保留 TYPE_ALREADY_EXISTS 语义）。
-func InsertType(ctx context.Context, tx pgx.Tx, pool pgxPool, typeName string, fields []Field, uniqueFields []string, operator string) error {
+// ON CONFLICT 保持事务可读：唯一冲突后仍在同一 tx 补查现态，禁止持事务再从
+// pool 获取连接（池满时形成循环等待）。READ COMMITTED 的下一条语句可见已提交
+// 的冲突行；补查自身失败时退回通用 409，保留 TYPE_ALREADY_EXISTS 语义。
+func InsertType(ctx context.Context, tx pgx.Tx, typeName string, fields []Field, uniqueFields []string, operator string) error {
 	def, err := schemaDefJSON(fields, uniqueFields)
 	if err != nil {
 		return apperr.New(500, apperr.CodeInternal, "schema 序列化失败")
 	}
-	_, err = tx.Exec(ctx, `
+	tag, err := tx.Exec(ctx, `
 		INSERT INTO data_types (type_name, schema_def, status, created_by, updated_by)
-		VALUES ($1, $2, $3, COALESCE(NULLIF($4, ''), 'system'), COALESCE(NULLIF($4, ''), 'system'))`,
+		VALUES ($1, $2, $3, COALESCE(NULLIF($4, ''), 'system'), COALESCE(NULLIF($4, ''), 'system'))
+		ON CONFLICT (type_name) DO NOTHING`,
 		typeName, def, StatusActive, operator)
 	if err != nil {
-		var pgErr *pgconn.PgError
-		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
-			// 补查走 pool（tx 已 aborted）；active/deprecated 指引不同，须区分。
-			existing, getErr := GetByName(ctx, pool, typeName)
-			if getErr != nil {
-				// 补查失败 → 退回通用 409，不向调用方抛 500
-				return apperr.New(409, apperr.CodeTypeExists, "类型已存在: "+typeName).
-					WithDetail("type_name", typeName)
-			}
-			if existing.Status == StatusDeprecated {
-				return apperr.New(409, apperr.CodeTypeExists,
-					"类型已废弃，名称永久保留、不可重新注册: "+typeName+
-						"（废弃不删除存量数据；如需新建请改用其他名称）").
-					WithDetail("type_name", typeName).WithDetail("current_status", existing.Status)
-			}
+		return apperr.New(500, apperr.CodeInternal, "注册类型失败")
+	}
+	if tag.RowsAffected() == 0 {
+		// 补查仍走 tx；active/deprecated 指引不同，须区分。
+		existing, getErr := GetByName(ctx, tx, typeName)
+		if getErr != nil {
+			// 补查失败 → 退回通用 409，不向调用方抛 500
+			return apperr.New(409, apperr.CodeTypeExists, "类型已存在: "+typeName).
+				WithDetail("type_name", typeName)
+		}
+		if existing.Status == StatusDeprecated {
 			return apperr.New(409, apperr.CodeTypeExists,
-				"类型已存在且为启用状态，不可重复注册: "+typeName+
-					"（调整字段定义请使用 schema 演进接口 POST .../schema）").
+				"类型已废弃，名称永久保留、不可重新注册: "+typeName+
+					"（废弃不删除存量数据；如需新建请改用其他名称）").
 				WithDetail("type_name", typeName).WithDetail("current_status", existing.Status)
 		}
-		return apperr.New(500, apperr.CodeInternal, "注册类型失败")
+		return apperr.New(409, apperr.CodeTypeExists,
+			"类型已存在且为启用状态，不可重复注册: "+typeName+
+				"（调整字段定义请使用 schema 演进接口 POST .../schema）").
+			WithDetail("type_name", typeName).WithDetail("current_status", existing.Status)
 	}
 	return nil
 }

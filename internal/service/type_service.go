@@ -46,7 +46,7 @@ func (s *TypeService) Register(ctx context.Context, in RegisterInput, operator s
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 
-	if err := meta.InsertType(ctx, tx, s.pool, in.TypeName, in.Fields, in.UniqueFields, operator); err != nil {
+	if err := meta.InsertType(ctx, tx, in.TypeName, in.Fields, in.UniqueFields, operator); err != nil {
 		return nil, err
 	}
 	if err := repository.CreateTableIfNotExists(ctx, tx, in.TypeName); err != nil {
@@ -181,6 +181,8 @@ func (s *TypeService) Deprecate(ctx context.Context, typeName, operator string) 
 		if err := tx.Commit(ctx); err != nil {
 			return nil, apperr.New(500, apperr.CodeInternal, "提交废弃事务失败")
 		}
+		return meta.GetByName(ctx, s.pool, typeName)
 	}
-	return meta.GetByName(ctx, s.pool, typeName)
+	// 幂等分支直接返回事务内现态；defer 回滚先释放连接，不嵌套取池。
+	return cur, nil
 }

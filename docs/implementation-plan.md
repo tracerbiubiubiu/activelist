@@ -156,7 +156,8 @@ tz: Asia/Shanghai             # 容器时区（基线 §9，compose environment 
 - **导入大文件**：百万行 JSON 需**流式解析**（JSON 数组流式解码或 NDJSON），避免整包载入内存；HTTP body 大小上限与 `write_timeout` 配套调整。
 - **导出必须含软删行**（带 status），否则导出→导入闭环会丢软删数据，违背「软删保留」。
 - **分页**：keyset 游标按**完整排序键**比较（审计修正 2026-09-04：原 `WHERE id > $1` 在 id 序 ≠ created_at 序时跳行/重行——导入保留源 id 与 created_at 后必然失序）：`WHERE (created_at, id) < ($1, $2) ORDER BY created_at DESC, id DESC LIMIT n`，游标 = 上一行 (created_at, id) 二元组（`after_id` 扩为 created_at+id 复合游标）；索引 `(created_at DESC, id DESC)`；offset 深翻页在百万行下不可用。
-- **元数据并发注册**：typeName 唯一索引，并发注册后到者 409。
+- **元数据并发注册**：typeName 唯一索引，并发注册后到者 409。冲突通过 `INSERT ... ON CONFLICT DO NOTHING` 保持当前事务可读，补查 active/deprecated 现态仍走该事务。
+- **事务内查询通道（2026-11-04，ECO-20261104-B07-F01）**：持有事务时不得再从 `pgxpool` 取连接；注册冲突补查、更新字段史判定沿用当前 tx，重复废弃直接返回事务内现态。`TestPoolSafety_TransactionPathsUseOneConnection` 以 `MaxConns=1` 覆盖重复注册（active/deprecated）、未知/移除字段更新和重复废弃，避免默认大连接池掩盖 BK11 同类循环等待。
 - **访问日志（审计配合）**：统一中间件出口记录 method / path / operator / trace_id / 请求参数（4KB 截断）/ 结果状态；schema 字段定义格式**预留 `sensitive: true` 标记**（暂不实现脱敏逻辑；启用时只改日志层一处，客户端契约不变）。
 - **X-Request-ID 透传**：所有响应回显 `X-Request-ID` 响应头（调用方与 zhuzhao 审计行关联排障用）。
 - **X-Operator 缺失兜底**：`"system"`（沿用 §15.4）；导入操作者 = 请求头操作者。**X-Operator 入 AK/SK 签名覆盖**（2026-09-03 基线修订：不可伪造；utils `aksk` 验签随 M-A6）。
@@ -178,3 +179,10 @@ tz: Asia/Shanghai             # 容器时区（基线 §9，compose environment 
 | O4 | E13 反代 | ✅ 已实现（zhuzhao 批次 B，2026-09-09）/ 待联调 | 不阻塞开发；阻塞联调与上线 |
 
 > **2026-09-04 全仓审计修正**：① keyset 分页谓词改完整排序键比较（原 `id > $1` 在导入保留源 id/created_at 后必失序）；② 导入全量替换补表锁/advisory lock（DELETE 只锁既有行，并发 INSERT 漏过破坏替换语义）；③ TZ 入配置；④ `storage`→`repository` 对齐基线层名；⑤ ADR-003 三处「落点机制待定」残留关闭 + G2 死机制划线 + 关联文档断链加仓库限定。
+
+
+## 9. 变更记录
+
+| 日期 | 变更 |
+|------|------|
+| 2026-11-04 | ECO-20261104-B07-F01：§7 补事务查询通道约束；注册冲突、更新字段史和重复废弃消除事务内再次取池，新增单连接真实 PG 回归。关联 zhuzhao 生态审计 B07，原始证据仅存主仓本地 `.codex/`。 |
