@@ -17,7 +17,7 @@ import (
 func CreateTableIfNotExists(ctx context.Context, tx pgx.Tx, typeName string) error {
 	create := `CREATE TABLE IF NOT EXISTS "` + typeName + `" (
 		id         BIGSERIAL PRIMARY KEY,
-		version    BIGINT NOT NULL DEFAULT 1,
+		version    BIGINT NOT NULL DEFAULT nextval('public._al_document_revision_seq'::regclass),
 		status     VARCHAR(16) NOT NULL DEFAULT 'active',
 		data       JSONB NOT NULL,
 		created_by VARCHAR(64) NOT NULL DEFAULT 'system',

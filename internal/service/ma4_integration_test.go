@@ -53,7 +53,7 @@ func TestA3_EvolveOptionalCompat(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "a", got.Data["name"])
 	upd, err := dsvc.Update(ctx, "ev_opt", doc.ID, service.UpdateInput{
-		Data: map[string]any{"qty": float64(2)}, Version: 1}, "system")
+		Data: map[string]any{"qty": float64(2)}, Version: doc.Version}, "system")
 	require.NoError(t, err)
 	require.Nil(t, upd.Data["tag"])
 
@@ -95,7 +95,7 @@ func TestA3_EvolveRequiredLazy(t *testing.T) {
 
 	// 旧数据更新 → 懒执行 422 + 迁移指引（A3：错误信息含迁移指引）
 	_, err = dsvc.Update(ctx, "ev_req", doc.ID, service.UpdateInput{
-		Data: map[string]any{"qty": float64(1)}, Version: 1}, "system")
+		Data: map[string]any{"qty": float64(1)}, Version: doc.Version}, "system")
 	e := mustAE(t, err)
 	require.Equal(t, 422, e.HTTP)
 	require.Equal(t, "NEW_REQUIRED_FIELD", e.Code)
@@ -104,7 +104,7 @@ func TestA3_EvolveRequiredLazy(t *testing.T) {
 
 	// 手工补齐后可写（合并保留已补字段）
 	upd, err := dsvc.Update(ctx, "ev_req", doc.ID, service.UpdateInput{
-		Data: map[string]any{"level": float64(3)}, Version: 1}, "system")
+		Data: map[string]any{"level": float64(3)}, Version: doc.Version}, "system")
 	require.NoError(t, err)
 	require.Equal(t, float64(3), upd.Data["level"])
 
@@ -117,7 +117,7 @@ func TestA3_EvolveRequiredLazy(t *testing.T) {
 		}, Version: 2}, "system")
 	require.NoError(t, err)
 	_, err = dsvc.Update(ctx, "ev_req", doc.ID, service.UpdateInput{
-		Data: map[string]any{"level": float64(4)}, Version: 2}, "system")
+		Data: map[string]any{"level": float64(4)}, Version: upd.Version}, "system")
 	require.Equal(t, "NEW_REQUIRED_FIELD", mustAE(t, err).Code)
 	require.Equal(t, "qty", mustAE(t, err).Detail["field"])
 }
@@ -141,7 +141,7 @@ func TestA3_EvolveRemoveFieldLazy(t *testing.T) {
 
 	// 旧数据更新：合并后携带已移除字段 → FIELD_DEPRECATED + 清理指引
 	_, err = dsvc.Update(ctx, "ev_rm", doc.ID, service.UpdateInput{
-		Data: map[string]any{"name": "b"}, Version: 1}, "system")
+		Data: map[string]any{"name": "b"}, Version: doc.Version}, "system")
 	e := mustAE(t, err)
 	require.Equal(t, 422, e.HTTP)
 	require.Equal(t, "FIELD_DEPRECATED", e.Code)

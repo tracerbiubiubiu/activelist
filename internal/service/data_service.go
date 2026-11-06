@@ -411,7 +411,7 @@ func (s *DataService) Export(ctx context.Context, typeName string, w io.Writer) 
 }
 
 // Import 全量替换导入（A5）：单事务内 LOCK TABLE（防并发 INSERT 漏过，§7 审计
-// 修正）→ 清表 → 流式分批校验重灌（version 重置 1）→ setval 序列。文件内
+// 修正）→ 清表 → 流式分批校验重灌（version 分配新 revision）→ setval 序列。文件内
 // 重复 id 422；逐行对当前 schema 全量校验（写路径全量校验，§1.3）；废弃类型
 // 拒绝导入（gate forWrite=true，与插入/更新同口径）。
 func (s *DataService) Import(ctx context.Context, typeName string, r io.Reader, operator string) (*ImportResult, error) {

@@ -77,7 +77,7 @@ func notFound(typeName string, id int64) *apperr.Error {
 		WithDetail("type_name", typeName).WithDetail("id", id)
 }
 
-// InsertDoc 插入数据行（version 落列默认 1；operator 空串 COALESCE 回退 'system'
+// InsertDoc 插入数据行（version 取全库持久 revision sequence；operator 空串 COALESCE 回退 'system'
 // ——显式 NULL 不触发列 DEFAULT，会 23502，M-A2 复查教训同款）。
 func InsertDoc(ctx context.Context, q dbtx, typeName string, data []byte, operator string) (*Document, error) {
 	d, err := scanDoc(q.QueryRow(ctx,
@@ -158,7 +158,7 @@ func GetDocForUpdate(ctx context.Context, q dbtx, typeName string, id int64) (*D
 // 前提下 version 谓词是双保险，防御未来绕过 GetDocForUpdate 的调用方。
 func UpdateDocData(ctx context.Context, q dbtx, typeName string, id, expectedVersion int64, data []byte, operator string) (*Document, error) {
 	d, err := scanDoc(q.QueryRow(ctx,
-		`UPDATE "`+typeName+`" SET data = $3, version = version + 1,
+		`UPDATE "`+typeName+`" SET data = $3, version = nextval('public._al_document_revision_seq'::regclass),
 		 updated_by = COALESCE(NULLIF($4, ''), 'system'), updated_at = NOW()
 		 WHERE id = $1 AND version = $2
 		 RETURNING `+docCols, id, expectedVersion, data, operator))
@@ -175,12 +175,12 @@ func UpdateDocData(ctx context.Context, q dbtx, typeName string, id, expectedVer
 	return d, nil
 }
 
-// UpdateDocStatus 状态迁移（软删/恢复共用；version 随迁移 +1，客户端持有的
+// UpdateDocStatus 状态迁移（软删/恢复共用；version 分配新 revision，客户端持有的
 // 旧文档立即过期，乐观锁语义对状态变更同样成立）。0 行 = 状态已非 fromStatus，
 // moved=false 由 service 决定幂等语义（重复软删/重复恢复返回现态）。
 func UpdateDocStatus(ctx context.Context, q dbtx, typeName string, id int64, fromStatus, toStatus, operator string) (*Document, bool, error) {
 	d, err := scanDoc(q.QueryRow(ctx,
-		`UPDATE "`+typeName+`" SET status = $3, version = version + 1,
+		`UPDATE "`+typeName+`" SET status = $3, version = nextval('public._al_document_revision_seq'::regclass),
 		 updated_by = COALESCE(NULLIF($4, ''), 'system'), updated_at = NOW()
 		 WHERE id = $1 AND status = $2
 		 RETURNING `+docCols, id, fromStatus, toStatus, operator))
