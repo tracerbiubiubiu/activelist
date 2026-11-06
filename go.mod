@@ -10,7 +10,7 @@ require (
 	github.com/stretchr/testify v1.12.1
 	github.com/testcontainers/testcontainers-go v0.44.0
 	github.com/testcontainers/testcontainers-go/modules/postgres v0.44.0
-	github.com/tracerbiubiubiu/zhuzhao-utils v0.4.4-0.20261106064944-9ed38f791175
+	github.com/tracerbiubiubiu/zhuzhao-utils v0.4.4-0.20261106080630-cd759a040245
 )
 
 require (

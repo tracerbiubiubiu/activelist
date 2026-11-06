@@ -195,6 +195,14 @@ col_<type>(
 3. ~~roadmap.md activelist 小节滞后~~ ✅ 已更新：审计归 zhuzhao、事件为 zhuzhao 业务操作点显式发布、M-A 无链式依赖均已修正。
 4. ~~zhuzhao 侧 ADR-003 工作区改动未提交~~ ✅ 已提交。
 
+## 2026-11-06 B07-F10 共享库消费者候选
+
+本独立修复分支将既有 utils pin 从 `v0.4.4-0.20261106064944-9ed38f791175` 升至 `v0.4.4-0.20261106080630-cd759a040245`，远端不可变提交 `cd759a0402455731f805ba507bf8401447e00e29`；保留 B07-F11 的 Reader 错误分类，承接内部/compat Transport 在 ReadAll 失败后仍关闭原 Body、保留原错误的生命周期修复。Go 正常解析 pseudo-version，go.sum 与 `go mod verify` 校验；无 replace/GOWORK/本地包或新增库。
+
+activelist 当前生产使用入站 `aksk.GinMiddleware`，无出站 Transport；本次统一共享库候选来源，不宣称本站存在已触发的 Transport 泄漏。主仓实际 Transport 消费点为 `internal/gateway/gateway.go` 的 `buildMount`，对应真实 HTTP 签名/读错关闭回归；taskrunner 仅 `aksk.Sign`，维持 v0.4.2。采用依赖升级以免复制共享实现产生多套签名/错误/关闭语义。两仓候选验证通过后仍由根会话承接联合全门禁；utils main/tag、消费者 main/部署未因本注发布。
+
+本候选已通过 activelist lint/unit/race/build、共享库双协议生命周期永久回归 8 轮与 `go mod verify`；主仓真实 HTTP 回归旧 pin 8/8 红、新 pin 8/8 绿。依赖源码逐字节与固定远端提交核对相同；无新增库，既有 API/数据/权限/配置不变。全量 PG 集成、主仓 acceptance 与最终发布状态仍由联合验收单列。
+
 ## 变更记录
 
 | 日期 | 变更 |
