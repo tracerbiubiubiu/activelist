@@ -9,6 +9,7 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+	"github.com/tracerbiubiubiu/zhuzhao-utils/response"
 
 	"github.com/tracerbiubiubiu/zhuzhao-utils/aksk"
 
@@ -35,15 +36,17 @@ func currentOperator(c *gin.Context) string {
 // Callers 为 AK/SK 验签密钥环（AK→SK）：非空时 /api/v1 挂验签（M-A6；2026-09-16
 // 验签统一批：失败响应与归因由 utils aksk.GinMiddleware + response.AKSKFail() 承接），
 // 为空时不挂（内网开发态/测试构造）；生产装配在 app 层对空环 fail-closed。
-// MaxBodyBytes = 验签读体上限（= cfg.Business.ImportMaxBytes，勿用 aksk 默认 8MB）。
+// MaxBodyBytes = 普通路由内存验签上限；导入路由独立使用 Data.ImportMaxBytes
+// 和磁盘流式验签。ImportTempDir 空串使用系统临时目录，供部署/测试选择暂存盘。
 // Logger 非 nil 时启用统一访问日志出口（16 号 §9）。
 type Deps struct {
-	Types        *service.TypeService
-	Data         *service.DataService
-	Ready        func() error
-	Callers      map[string][]byte
-	MaxBodyBytes int64
-	Logger       *slog.Logger
+	Types         *service.TypeService
+	Data          *service.DataService
+	Ready         func() error
+	Callers       map[string][]byte
+	MaxBodyBytes  int64
+	ImportTempDir string
+	Logger        *slog.Logger
 }
 
 // New 构造路由引擎。
@@ -100,9 +103,21 @@ func New(d Deps) *gin.Engine {
 
 			// 导入导出（M-A5；A5）。export=静态段与 :id 参数同级（gin 静态优先）
 			data.GET("/:typeName/export", d.exportData)
-			data.POST("/:typeName/import", d.importData)
 		}
 	}
+	// 导入不经过普通组的内存读体中间件；使用同一utils验签协议及标准失败响应，
+	// 完整验签并rewind私有临时文件后才进入Import（开启PG事务）。
+	importHandlers := []gin.HandlerFunc{}
+	if len(d.Callers) > 0 {
+		limit := d.MaxBodyBytes
+		if d.Data != nil {
+			limit = d.Data.ImportMaxBytes()
+		}
+		v := &aksk.Verifier{Keys: d.Callers, MaxBodyBytes: limit, Logger: d.Logger}
+		importHandlers = append(importHandlers, aksk.GinStreamingMiddleware(v, d.ImportTempDir, response.AKSKFail()))
+	}
+	importHandlers = append(importHandlers, d.importData)
+	r.POST("/api/v1/data/:typeName/import", importHandlers...)
 	return r
 }
 

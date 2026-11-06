@@ -52,7 +52,15 @@ func setupPG(t *testing.T) (*pgxpool.Pool, *service.TypeService) {
 		),
 	)
 	require.NoError(t, err)
-	t.Cleanup(func() { _ = container.Terminate(ctx) })
+	t.Cleanup(func() {
+		// setup ctx is canceled when this helper returns. Cleanup needs its own
+		// bounded context or per-test PG instances accumulate until Ryuk exits.
+		cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cleanupCancel()
+		if err := container.Terminate(cleanupCtx); err != nil {
+			t.Errorf("terminate isolated PostgreSQL: %v", err)
+		}
+	})
 
 	dsn, err := container.ConnectionString(ctx, "sslmode=disable")
 	require.NoError(t, err)

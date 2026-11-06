@@ -64,8 +64,8 @@ type Business struct {
 	PageSizeMax     int `mapstructure:"page_size_max"`
 	// ImportBatchRows 全量替换导入同事务内的分批行数（百万行级控内存/WAL）。
 	ImportBatchRows int `mapstructure:"import_batch_rows"`
-	// ImportMaxBytes 导入请求 body 硬上限（§7 大文件配套——MaxBytesReader 防
-	// 超大 body 占满磁盘/WAL；默认 1GiB ≈ 百万行 × 1KB）。
+	// ImportMaxBytes 导入请求 body 硬上限（先磁盘流式验签，验签成功后handler
+	// MaxBytesReader再次限体；默认 1GiB ≈ 百万行 × 1KB）。
 	ImportMaxBytes int64 `mapstructure:"import_max_bytes"`
 }
 

@@ -31,6 +31,7 @@ docker compose -f compose.prod.yaml exec apiserver wget -qO- http://127.0.0.1:18
 
 ## 运维要点
 
+- **大文件导入**：import先使用utils统一流式验签，暂存于系统临时目录（容器默认`/tmp`，可通过`TMPDIR`选择已有可写挂载目录）；每请求0600私有文件，内存验签窗口固定，磁盘占用最高为配置上限外加一字节探读。空间按并发数×`ACTIVELIST_BUSINESS_IMPORT_MAX_BYTES`与余量准备，失败503从服务端日志排查磁盘。正常成功/拒绝/业务失败/panic展开均清理，SIGKILL/宿主崩溃残留由系统临时目录清理策略承接。`read_timeout`须允许上传；`write_timeout`与既有HMAC时间窗还须覆盖处理耗时，普通CRUD上限仍16MiB。
 - **扩缩容**：`docker compose -f compose.prod.yaml up -d --scale apiserver=N`（无状态；共享网别名天然负载到全部副本）。
 - **备份**：pgbackup 每日 02:00 `pg_dump -Fc` 保留 14 份 + WAL 归档（`archive_timeout=300s`）——恢复步骤见 [backup/README.md](backup/README.md)。
 - **健康**：`/healthz`（存活）/`/readyz`（就绪，检 PG）；compose healthcheck 已接。

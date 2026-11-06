@@ -155,7 +155,7 @@ tz: Asia/Shanghai             # 容器时区（基线 §9，compose environment 
 - **文档 revision（2026-11-05，ECO-20261104-B07-F03）**：数值 `version` 为全库持久 `_al_document_revision_seq` 分配的不透明修订标识，创建/内容更新/软删/恢复/导入均取新值，可跳号。导入忽略文件version，不复用旧值；空导入只重置ID序列，revision序列永不随清空、回滚、重导或ID重用重置。同一文件重导的业务数据保持幂等，版本每次失效；客户端必须使用最近读到的version，不能自行+1。
 - **迁移000002（up/down成对）**：up锁定元数据/动态表，扫描所有存量version后初始化revision序列并替换存量默认值；存量文档version不改写。升级前停止全部旧写实例，随新代码一并运行迁移后再启动；旧代码的version+1/导入置1不能混跑。回滚必须同窗回退代码与DB默认值/序列，数据库备份须包含sequence状态。序列为BIGINT、NO CYCLE，耗尽时拒写，不能回绕复用。
 - **全量替换导入**：单事务内 `DELETE` 全表（含软删行）→ 分批 INSERT（`import_batch_rows`）→ `setval` 至 max(id)；百万行级注意 WAL 膨胀与锁时长，导入为低频运维级操作可接受，事务内分批控制内存。
-- **导入大文件**：百万行 JSON 需**流式解析**（JSON 数组流式解码或 NDJSON），避免整包载入内存；HTTP body 大小上限与 `write_timeout` 配套调整。
+- **导入大文件**：百万行 JSON 需**流式解析**（JSON 数组流式解码或 NDJSON），避免整包载入内存。2026-11-06 ECO-B07-F02：普通CRUD维持16MiB内存验签，import独立使用utils `GinStreamingMiddleware` 将请求按 `business.import_max_bytes` 有界暂存私有文件、流式哈希，完整验签后rewind，再进入导入事务；上限包括无Content-Length请求。读取失败400、超限413、认证失败401、服务器暂存失败503，错误不得改原数据。临时盘容量须按并发×上限准备，上传读超时用 `read_timeout`；`write_timeout` 还须覆盖上传、验签与导入/响应的整体耗时，时间窗仍是既有±5min。
 - **导出必须含软删行**（带 status），否则导出→导入闭环会丢软删数据，违背「软删保留」。
 - **分页**：keyset 游标按**完整排序键**比较（审计修正 2026-09-04：原 `WHERE id > $1` 在 id 序 ≠ created_at 序时跳行/重行——导入保留源 id 与 created_at 后必然失序）：`WHERE (created_at, id) < ($1, $2) ORDER BY created_at DESC, id DESC LIMIT n`，游标 = 上一行 (created_at, id) 二元组（`after_id` 扩为 created_at+id 复合游标）；索引 `(created_at DESC, id DESC)`；offset 深翻页在百万行下不可用。
 - **元数据并发注册**：typeName 唯一索引，并发注册后到者 409。冲突通过 `INSERT ... ON CONFLICT DO NOTHING` 保持当前事务可读，补查 active/deprecated 现态仍走该事务。
