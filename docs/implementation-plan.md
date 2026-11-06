@@ -1,5 +1,7 @@
 # activelist 实现计划（zhuzhao Phase 3 · M-A）
 
+> 2026-11-06 ECO-B07-F07：handler.Fail统一脱敏5xx（保留HTTP/数值业务码），原始错误进入现有带request_id的服务端日志；4xx结构化可修正提示保持原样。源3d01e8a固定归档全门禁通过，联合版本待验证，未合main。
+
 > **状态**：2026-09-03 建档，**实现 SSOT**。定稿依据 = [`docs/activelist.md`](./activelist.md) 头部（收敛声明·最终画像·设计定稿补充）+ [`ADR-003-integration-contract.md`](./ADR-003-integration-contract.md)（集成契约 SSOT）。zhuzhao 侧排期挂 M-A（phase3/13），其验收标准引用本文件 §2（M-A 验收 = 本文件验收标准）。
 
 ---
