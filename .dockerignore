@@ -11,3 +11,6 @@ backups
 Dockerfile
 .dockerignore
 config/config.yaml.bak
+
+# Local audit workspace
+.codex/

@@ -6,3 +6,6 @@ data/
 # Ai
 .codebuddy/
 .workbuddy/
+
+# Local audit workspace
+.codex/
