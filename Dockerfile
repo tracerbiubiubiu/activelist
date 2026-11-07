@@ -1,7 +1,7 @@
 # activelist apiserver 多阶段构建。迁移已 embed 进二进制（internal/repository/migrate.go
 # iofs），镜像内无需 migrations 目录；config 经镜像内置默认 + 环境变量覆盖（§6）。
 # 构建期走国内镜像源（对齐 zhuzhao deployments/Dockerfile 惯例）。
-FROM golang:1.26-alpine AS build
+FROM golang:1.26.10-alpine AS build
 RUN sed -i 's#https://dl-cdn.alpinelinux.org#https://mirrors.aliyun.com#g' /etc/apk/repositories && \
     go env -w GOPROXY=https://goproxy.cn,direct
 WORKDIR /src
