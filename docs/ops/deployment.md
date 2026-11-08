@@ -1,11 +1,15 @@
 # activelist 部署 runbook
 
-> 部署态 = `compose.prod.yaml`（本目录）；开发态 = `compose.dev.yaml`（仅 PG，服务跑宿主 `go run ./cmd/apiserver`@18081）。
-> 集成契约 SSOT：[ADR-003](../docs/ADR-003-integration-contract.md)；跨仓拼装总 runbook见 zhuzhao 仓 `deployments/README.md`。
+> 部署态 = `deploy/compose.prod.yaml`；开发态 = `deploy/compose.dev.yaml`（仅 PG，服务跑宿主 `go run ./cmd/apiserver`@18081）。
+> 集成契约 SSOT：[ADR-003](../adr/adr-003-integration-contract.md)；跨仓拼装总 runbook见 zhuzhao 仓 `deployments/README.md`。
+
+> 以下compose命令从仓库根目录 `cd deploy` 后执行；不要在docs/ops中执行。
 
 ## 快速开始（部署态）
 
 ```sh
+cd deploy
+
 # 0. 预建共享网（一次性；zhuzhao 栈所在宿主）
 docker network create zhuzhao_to_activelist
 
@@ -20,7 +24,7 @@ docker compose -f compose.prod.yaml up -d --build
 
 # 3. 验证
 docker compose -f compose.prod.yaml ps            # 三服务 healthy
-curl http://127.0.0.1:18081/healthz                # 宿主直验需临时映射；栈内验证：
+# 生产不发布宿主端口，直接从栈内验证：
 docker compose -f compose.prod.yaml exec apiserver wget -qO- http://127.0.0.1:18081/healthz
 ```
 
@@ -33,7 +37,7 @@ docker compose -f compose.prod.yaml exec apiserver wget -qO- http://127.0.0.1:18
 
 - **大文件导入**：import先使用utils统一流式验签，暂存于系统临时目录（容器默认`/tmp`，可通过`TMPDIR`选择已有可写挂载目录）；每请求0600私有文件，内存验签窗口固定，磁盘占用最高为配置上限外加一字节探读。空间按并发数×`ACTIVELIST_BUSINESS_IMPORT_MAX_BYTES`与余量准备，失败503从服务端日志排查磁盘。正常成功/拒绝/业务失败/panic展开均清理，SIGKILL/宿主崩溃残留由系统临时目录清理策略承接。`read_timeout`须允许上传；`write_timeout`与既有HMAC时间窗还须覆盖处理耗时，普通CRUD上限仍16MiB。
 - **扩缩容**：`docker compose -f compose.prod.yaml up -d --scale apiserver=N`（无状态；共享网别名天然负载到全部副本）。
-- **备份**：pgbackup 每日 02:00 `pg_dump -Fc` 保留 14 份 + WAL 归档（`archive_timeout=300s`）——恢复步骤见 [backup/README.md](backup/README.md)。
+- **备份**：pgbackup 每日 02:00 `pg_dump -Fc` 保留 14 份 + WAL 归档（`archive_timeout=300s`）——恢复步骤见 [备份与恢复](backup.md)。
 - **健康**：`/healthz`（存活）/`/readyz`（就绪，检 PG）；compose healthcheck 已接。
 - **已知边界（触发驱动挂起项）**：无 metrics 端点（观测=结构化日志+健康探针，ES 聚合线触发时补）；容器日志落容器内 `logs/` 未挂卷（重建即丢，聚合前可接受）。
 

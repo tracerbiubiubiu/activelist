@@ -1,3 +1,7 @@
+# activelist MongoDB 原始方案（历史）
+
+> 2026-11-08 归档：以下原稿及其叠加修订完整保留，供决策溯源；它不是现行合同。原稿“§6.1–6.5/§10继续有效”范围过宽：object/date/嵌套字段、多版本数据、Schema并发均成功、内部自动重试等没有现行效力。当前PG方案D、revision、校验与API分别见 [设计](../../design/overview.md)、[数据契约](../../api/data-contract.md)、[HTTP契约](../../api/contract.md)。原稿已采纳决议的当前表达集中在这些入口，历史章节不再单独维护。
+
 # 基于 MongoDB + Go 的动态多类型数据全生命周期管理平台技术方案
 
 ---

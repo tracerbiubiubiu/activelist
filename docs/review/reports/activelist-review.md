@@ -1,6 +1,10 @@
+# activelist 方案评审（收敛前时点报告）
+
+> 本报告评审的是原MongoDB/三进程方案，来源日期与发现编号保留在原文。2026-11-08整理后：Schema方案D已替代多版本方案，PG薄层不含ChangeStream/事件worker/本地业务审计，故不能把下方C/H/M/L清单直接当现行未修项。当前处理依据见 [现行设计](../../design/overview.md)、[集成决定](../../adr/adr-003-integration-contract.md) 与 [实施历史](../archive/implementation-plan.md)。具体曾失败和当时验证范围不被这段说明改写。
+
 # activelist 方案评审报告
 
-> **⚠️ 历史文档注记（2026-09-03）**：本评审针对**收敛前的原始方案**（MongoDB + 3 进程 + 事件驱动 + 两层审计）。随职责收敛（见 [`activelist.md`](./activelist.md) 头部收敛声明），**事件 / 历史快照 / Asynq / watcher 相关发现已失效**（C2、C3、H4、H5、H7，及第六节中事件处理可靠性、两层审计等评估行）；**数据模型 / 并发 / 校验侧发现仍具参考价值**（C1、H1、H3、M4、M5 与 §5/§6/§10 相关评估）。其中 C1 的 schemaVersion 方案 A/B/C 之辩已由**方案 D 定稿**关闭（2026-09-03，见 activelist.md 头部「设计定稿补充」）。现行实现依据以 [`implementation-plan.md`](./implementation-plan.md) 为准。
+> **⚠️ 历史文档注记（2026-09-03）**：本评审针对**收敛前的原始方案**（MongoDB + 3 进程 + 事件驱动 + 两层审计）。随职责收敛（见 [`activelist.md`](../archive/activelist-mongodb-design.md) 头部收敛声明），**事件 / 历史快照 / Asynq / watcher 相关发现已失效**（C2、C3、H4、H5、H7，及第六节中事件处理可靠性、两层审计等评估行）；**数据模型 / 并发 / 校验侧发现仍具参考价值**（C1、H1、H3、M4、M5 与 §5/§6/§10 相关评估）。其中 C1 的 schemaVersion 方案 A/B/C 之辩已由**方案 D 定稿**关闭（2026-09-03，见 activelist.md 头部「设计定稿补充」）。现行实现依据以 [`implementation-plan.md`](../archive/implementation-plan.md) 为准。
 
 > **评审对象**：`docs/soar/activelist.md`（2035 行，22 章节）
 >

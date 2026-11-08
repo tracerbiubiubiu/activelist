@@ -66,3 +66,6 @@ docker run -d --name al-pitr -v <基备卷>:/var/lib/postgresql/data \
 - **常见失败根因**：postgres 未运行（pg_dump 报 `could not translate host name "postgres"`）——postgres 已配 `restart: unless-stopped` 自愈；若手工 `docker compose -f compose.prod.yaml stop postgres` 停库，备份会持续重试失败直至库恢复，属预期行为；
 - `backups` / `wal_archive` 卷建议纳入宿主机级外部备份（卷快照/同步），防单机盘损；
 - 保留期调整：`RETAIN_COUNT`（份数，默认 14）。
+
+
+恢复前核对实际compose项目名、backups/wal_archive卷名与文件；文中容器/卷名是演练示例，不替代现场盘点。revision序列状态必须在备份中，恢复旧备份后隔离旧客户端缓存并重读，见 [部署升级](deployment.md)。

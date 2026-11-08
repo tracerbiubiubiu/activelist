@@ -1,8 +1,12 @@
+# activelist 实施计划与复验历史
+
+> 2026-11-08 归档。以下保留原里程碑、验收和修复记录。现行规范见 [设计](../../design/overview.md)、[HTTP契约](../../api/contract.md)、[配置](../../ops/configuration.md)。旧detail.error_code信封、无单测/LockTimeout待办、可选TTL缓存和“日志已脱敏”的风险缓解表述不是当前事实；当前没有TTL缓存，日志脱敏仍未启用，存储加密是不做的风险接受。原始失败/修订记录保留，不改写成今天通过。
+
 # activelist 实现计划（zhuzhao Phase 3 · M-A）
 
 > 2026-11-06 ECO-B07-F07：handler.Fail统一脱敏5xx（保留HTTP/数值业务码），原始错误进入现有带request_id的服务端日志；4xx结构化可修正提示保持原样。源3d01e8a固定归档全门禁通过，联合版本待验证，未合main。
 
-> **状态**：2026-09-03 建档，**实现 SSOT**。定稿依据 = [`docs/activelist.md`](./activelist.md) 头部（收敛声明·最终画像·设计定稿补充）+ [`ADR-003-integration-contract.md`](./ADR-003-integration-contract.md)（集成契约 SSOT）。zhuzhao 侧排期挂 M-A（phase3/13），其验收标准引用本文件 §2（M-A 验收 = 本文件验收标准）。
+> **状态**：2026-09-03 建档，**实现 SSOT**。定稿依据 = [`docs/activelist.md`](activelist-mongodb-design.md) 头部（收敛声明·最终画像·设计定稿补充）+ [`ADR-003-integration-contract.md`](../../adr/adr-003-integration-contract.md)（集成契约 SSOT）。zhuzhao 侧排期挂 M-A（phase3/13），其验收标准引用本文件 §2（M-A 验收 = 本文件验收标准）。
 
 ---
 

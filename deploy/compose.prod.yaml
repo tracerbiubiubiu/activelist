@@ -12,7 +12,7 @@
 #   ACTIVELIST_PG_PASSWORD        PG 口令
 #
 # 备份策略：每日 02:00 pg_dump（pgbackup 服务，保留 14 份）+ WAL 归档（archive_timeout
-# 5 分钟）；恢复步骤见 deploy/backup/README.md。
+# 5 分钟）；恢复步骤见 docs/ops/backup.md。
 name: activelist
 
 services:
