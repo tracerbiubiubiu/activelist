@@ -1,7 +1,7 @@
 # activelist 部署 runbook
 
 > 部署态 = `deploy/compose.prod.yaml`；开发态 = `deploy/compose.dev.yaml`（仅 PG，服务跑宿主 `go run ./cmd/apiserver`@18081）。
-> 集成契约 SSOT：[ADR-003](../adr/adr-003-integration-contract.md)；跨仓拼装总 runbook见 zhuzhao 仓 `deployments/README.md`。
+> 集成契约 SSOT：[ADR-003](../adr/adr-003-integration-contract.md)；跨仓拼装见主仓[部署与联调](https://github.com/tracerbiubiubiu/zhuzhao/blob/phase5/docs/ops/deployment.md)。
 
 > 以下compose命令从仓库根目录 `cd deploy` 后执行；不要在docs/ops中执行。
 
