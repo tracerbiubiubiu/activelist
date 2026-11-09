@@ -37,3 +37,6 @@ jobs:
         run: go test -race ./...
       - name: integration (testcontainers, race)
         run: go test -tags integration -race ./...
+        env:
+          # 同 zhuzhao：CI runner 用完即焚，禁 Ryuk 免跨测试包复用等待超时的假红面
+          TESTCONTAINERS_RYUK_DISABLED: "true"
