@@ -84,7 +84,7 @@ func (s *DataService) Insert(ctx context.Context, typeName string, in InsertInpu
 		return nil, err
 	}
 	if err := validation.ValidateData(def.Fields, in.Data); err != nil {
-		return nil, s.mapDataValidationError(ctx, err, def, false)
+		return nil, mapDataValidationError(ctx, s.pool, err, def, false)
 	}
 	raw, err := json.Marshal(in.Data)
 	if err != nil {
@@ -216,7 +216,7 @@ func (s *DataService) Update(ctx context.Context, typeName string, id int64, in 
 
 	merged := mergeData(doc.Data, in.Data)
 	if err := validation.ValidateData(def.Fields, merged); err != nil {
-		return nil, s.mapDataValidationError(ctx, err, def, true)
+		return nil, mapDataValidationError(ctx, tx, err, def, true)
 	}
 	if err := s.checkUniqueDup(ctx, tx, def, merged, id); err != nil {
 		return nil, err
@@ -309,13 +309,21 @@ func (s *DataService) Restore(ctx context.Context, typeName string, id int64, op
 	return doc, nil
 }
 
+// schemaReader 与 meta 的查询通道契约一致，由 pool 或当前 tx 满足。
+type schemaReader interface {
+	Query(context.Context, string, ...any) (pgx.Rows, error)
+	QueryRow(context.Context, string, ...any) pgx.Row
+}
+
 // mapDataValidationError 数据写路径校验错误 → 懒执行契约分档（§4：FIELD_DEPRECATED /
 // NEW_REQUIRED_FIELD 迁移提示）。validation 返回的 reason 分档：
 //   - missing_required：更新路径 = 旧数据未含演进新增必填字段 → NEW_REQUIRED_FIELD
 //     （错误信息含迁移指引，A3）；插入路径保持 VALIDATION_ERROR（新建数据本就该全量给齐）。
 //   - unknown_field：查字段史——曾存在于历史 schema = 已移除字段待清理 →
 //     FIELD_DEPRECATED；否则维持 VALIDATION_ERROR（真拼写错误）。
-func (s *DataService) mapDataValidationError(ctx context.Context, err error, def *meta.Definition, isUpdate bool) error {
+//
+// q 必须沿用调用路径的查询通道：事务内传 tx，事务外才可传 pool。
+func mapDataValidationError(ctx context.Context, q schemaReader, err error, def *meta.Definition, isUpdate bool) error {
 	var ae *apperr.Error
 	if !errors.As(err, &ae) {
 		return err
@@ -330,7 +338,7 @@ func (s *DataService) mapDataValidationError(ctx context.Context, err error, def
 			"缺少必填字段: "+field+"——旧数据未含 schema 演进新增的必填字段，须补齐该字段后方可更新（或经导入全量重灌）").
 			WithDetail("field", field)
 	case "unknown_field":
-		existed, herr := meta.FieldExistedInHistory(ctx, s.pool, def.TypeName, field)
+		existed, herr := meta.FieldExistedInHistory(ctx, q, def.TypeName, field)
 		if herr != nil {
 			return herr
 		}
@@ -403,7 +411,7 @@ func (s *DataService) Export(ctx context.Context, typeName string, w io.Writer) 
 }
 
 // Import 全量替换导入（A5）：单事务内 LOCK TABLE（防并发 INSERT 漏过，§7 审计
-// 修正）→ 清表 → 流式分批校验重灌（version 重置 1）→ setval 序列。文件内
+// 修正）→ 清表 → 流式分批校验重灌（version 分配新 revision）→ setval 序列。文件内
 // 重复 id 422；逐行对当前 schema 全量校验（写路径全量校验，§1.3）；废弃类型
 // 拒绝导入（gate forWrite=true，与插入/更新同口径）。
 func (s *DataService) Import(ctx context.Context, typeName string, r io.Reader, operator string) (*ImportResult, error) {

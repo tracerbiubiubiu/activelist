@@ -1,7 +1,7 @@
 //go:build integration
 
 // M-A5 / A5 验收集成验证（真 PG）：导出含软删 → 清空 → 导入 → 数据一致（version
-// 重置 1）/ 重导幂等 / 序列正确（后续插入不冲突）/ 导入期间并发写 5s 快速失败
+// 分配新 revision）/ 重导幂等 / 序列正确（后续插入不冲突）/ 导入期间并发写 5s 快速失败
 // 409 / 校验失败整笔回滚 / 废弃类型拒导入 / HTTP e2e 往返。
 package service_test
 
@@ -40,7 +40,7 @@ func importRaw(t *testing.T, dsvc *service.DataService, typeName string, raw []b
 	return res
 }
 
-// A5 主链：导出（含软删）→ 清空 → 导入 → 数据一致（version 重置 1）+ 序列正确。
+// A5 主链：导出（含软删）→ 清空 → 导入 → 数据一致（version 分配新 revision）+ 序列正确。
 func TestA5_ExportImportRoundTrip(t *testing.T) {
 	pool, tsvc := setupPG(t)
 	dsvc := newDataSvc(pool)
@@ -50,9 +50,9 @@ func TestA5_ExportImportRoundTrip(t *testing.T) {
 	require.NoError(t, err)
 	d1 := insertDoc(t, dsvc, "xfer_item", 1, "a")
 	d2 := insertDoc(t, dsvc, "xfer_item", 2, "b")
-	// 一行更新（version 2）+ 一行软删（导出须含）
+	// 一行更新（分配新 revision）+ 一行软删（导出须含）
 	_, err = dsvc.Update(ctx, "xfer_item", d1.ID, service.UpdateInput{
-		Data: map[string]any{"qty": float64(9)}, Version: 1}, "updater")
+		Data: map[string]any{"qty": float64(9)}, Version: d1.Version}, "updater")
 	require.NoError(t, err)
 	_, err = dsvc.SoftDelete(ctx, "xfer_item", d2.ID, "system")
 	require.NoError(t, err)
@@ -78,17 +78,18 @@ func TestA5_ExportImportRoundTrip(t *testing.T) {
 	require.EqualValues(t, 0, res.Deleted) // 表已手工清空，导入侧清表计数自然为 0
 	require.EqualValues(t, 2, res.MaxID)
 
-	// 数据一致：id/status/data/操作者/时间戳全等，version 重置 1
+	// 数据一致：id/status/data/操作者/时间戳全等，version 分配新 revision
 	reexported := exportAll(t, dsvc, "xfer_item")
 	require.Len(t, reexported, len(exported))
 	byID := map[int64]repository.Document{}
 	for _, d := range reexported {
 		byID[d.ID] = d
-		require.EqualValues(t, 1, d.Version, "导入 version 重置 1")
+		require.Positive(t, d.Version, "导入 version 为正 revision")
 	}
 	for _, want := range exported {
 		got, ok := byID[want.ID]
 		require.True(t, ok, "缺行 id=%d", want.ID)
+		require.Greater(t, got.Version, want.Version, "导入必须使旧版本失效")
 		require.Equal(t, want.Status, got.Status)
 		require.Equal(t, want.Data, got.Data)
 		require.Equal(t, want.CreatedBy, got.CreatedBy)
@@ -106,7 +107,7 @@ func TestA5_ExportImportRoundTrip(t *testing.T) {
 	require.Len(t, docs, 2) // 3 行中 1 行 deleted
 }
 
-// A5 幂等：同一文件重导结果一致（重导后再导出逐字段相等）。
+// A5 幂等：同一文件重导保留业务数据；每次重导分配新 revision 使旧客户端失效。
 func TestA5_ImportIdempotent(t *testing.T) {
 	pool, tsvc := setupPG(t)
 	dsvc := newDataSvc(pool)
@@ -130,7 +131,7 @@ func TestA5_ImportIdempotent(t *testing.T) {
 		require.Equal(t, first[i].ID, second[i].ID)
 		require.Equal(t, first[i].Data, second[i].Data)
 		require.Equal(t, first[i].Status, second[i].Status)
-		require.EqualValues(t, 1, second[i].Version)
+		require.Greater(t, second[i].Version, first[i].Version, "重导保留数据幂等，版本不能复用")
 	}
 }
 

@@ -12,7 +12,7 @@
 #   ACTIVELIST_PG_PASSWORD        PG 口令
 #
 # 备份策略：每日 02:00 pg_dump（pgbackup 服务，保留 14 份）+ WAL 归档（archive_timeout
-# 5 分钟）；恢复步骤见 deploy/backup/README.md。
+# 5 分钟）；恢复步骤见 docs/ops/backup.md。
 name: activelist
 
 services:
@@ -42,7 +42,7 @@ services:
     # 02:00 pg_dump 连续三日 DNS 解析失败（postgres 不可达）。与其他服务口径对齐。
     restart: unless-stopped
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U activelist -d activelist"]
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U activelist -d activelist"]
       interval: 5s
       timeout: 3s
       retries: 10

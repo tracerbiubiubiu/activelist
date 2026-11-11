@@ -1,10 +1,17 @@
-# ADR-003: activelist 集成形态 —— 独立服务 + 统一 PG + 事件总线对接（非事务耦合）
+# ADR-003: activelist 独立PG薄层与zhuzhao集成
+
+> 2026-11-08 当前效力摘要：独立服务/模块/数据库、PG每类型表+JSONB、单一当前Schema方案D、用户授权归网关且服务间AK/SK验签。事件与业务审计归调用方；本服务保留技术日志和Schema历史。现行字段与协议见 [当前设计](../design/overview.md)、[HTTP](../api/contract.md)、[数据契约](../api/data-contract.md)。
+>
+> 适用次序：上述现行说明及源码 → 09-03职责收敛修订 → 早期原决议。下方“事件总线对接/两层业务审计/Mongo/导入version重置1”、D1旧依赖测试和LockTimeout待办均保留为历史，不具有重新实施指令效力；revision已由000002替代、日志脱敏未启用。候选pin/门禁/部署状态按其明确时点，文档整理不宣称已发布。
+
+> 历史章节导航：正文原 `docs/activelist.md` 及其中§5.4/§7/§8/§19/§23等定位，均指[原MongoDB方案与收敛记录](../review/archive/activelist-mongodb-design.md)，不指当前短篇 `docs/design/overview.md`。主仓镜像当前入口为 [ADR-003](https://github.com/tracerbiubiubiu/zhuzhao/blob/phase5/docs/adr/adr-003-activelist-integration-form.md)；历史文件名和当时状态保留原意。
+
 
 ## 日期
 2026-08-25
 
 ## 状态
-已采纳（**2026-09-03 部分条款经职责收敛修订，见「2026-09-03 职责收敛修订」节**）。**2026-09-03 起本文件为集成契约 SSOT**（以 activelist 仓库为准，zhuzhao 侧 `docs/adr/ADR-003-activelist-integration-form.md` 降为镜像，反向同步债见文末「待同步清单」）。
+已采纳（**2026-09-03 部分条款经职责收敛修订，见「2026-09-03 职责收敛修订」节**）。**2026-09-03 起本文件为集成契约 SSOT**（以 activelist 仓库为准，zhuzhao 侧 [ADR-003 镜像](https://github.com/tracerbiubiubiu/zhuzhao/blob/phase5/docs/adr/adr-003-activelist-integration-form.md)，反向同步债见文末「待同步清单」）。
 
 ## 背景
 `docs/activelist.md` 设计了一个基于 MongoDB + Go 的动态多类型数据全生命周期管理平台（高可靠/高可用要求）。需要决策：它与 zhuzhao 的关系（独立 vs 内化）、数据库选型（Mongo vs PG）、以及是否需要跨事务一致。
@@ -177,13 +184,13 @@ col_<type>(
 
 > ⚠️ **2026-09-02 修订（design-decisions §23.2）**：现行排期 = Phase 3 主线 **M-A（activelist 独立实现）**，与其他里程碑无链式依赖；M-A 前置 = 共享 utils 抽取（🚦）。下文为 2026-08-25 原表述，保留作历史。
 
-- **Phase 3 启动后**（L1 事件机制 + Asynq 就绪后）。原拟 Phase 2b，因前置依赖 L1/Asynq 实际于 Phase 3 启动时落地，已决策顺延至 Phase 3 启动后——避免为 activelist 单独写一套临时事件分发再迁移回 L1（违反 ADR-001「不偷工减料」原则）。**HR 目录同步不依赖 L1，仍属 Phase 2b**（desired-state reconciliation 直接写表，非事件消费者）。前置依赖：L1 事件机制 + Asynq 执行器就绪（Phase 3 启动时实现，见 [ADR-001](./ADR-001-event-mechanism-l1-steady-state.md)/[ADR-002](./ADR-002-asynq-async-task-executor.md)）、网关反代模块（E13）。
+- **Phase 3 启动后**（L1 事件机制 + Asynq 就绪后）。原拟 Phase 2b，因前置依赖 L1/Asynq 实际于 Phase 3 启动时落地，已决策顺延至 Phase 3 启动后——避免为 activelist 单独写一套临时事件分发再迁移回 L1（违反 ADR-001「不偷工减料」原则）。**HR 目录同步不依赖 L1，仍属 Phase 2b**（desired-state reconciliation 直接写表，非事件消费者）。前置依赖：L1 事件机制 + Asynq 执行器就绪（Phase 3 启动时实现，见 [ADR-001](https://github.com/tracerbiubiubiu/zhuzhao/blob/phase5/docs/adr/adr-001-event-mechanism-l1-steady-state.md)/[ADR-002](https://github.com/tracerbiubiubiu/zhuzhao/blob/phase5/docs/adr/adr-002-asynq-async-task-executor.md)）、网关反代模块（E13）。
 - Mongo→PG 迁移（G1）与方案 F 可并行设计，不阻塞 zhuzhao 主链路；若 2b 排期紧张，标为 Phase 2 按需增强。
 
 ## 关联文档
 - 本仓库 `docs/activelist.md` §3（设计原则）、§7.2（Change Stream）、§18（部署）、§19（与 zhuzhao 集成）——**2026-09-03 迁移至独立仓库**（`github.com/tracerbiubiubiu/activelist`），SSOT 以 activelist 仓库为准
-- zhuzhao 仓库 `docs/adr/ADR-001-event-mechanism-l1-steady-state.md`（L1 事件源长期稳态）
-- zhuzhao 仓库 `docs/adr/ADR-002-asynq-async-task-executor.md`（Asynq 作为异步任务执行器；注意 Asynq 不当事件总线，事件源仍是 L1）
+- zhuzhao 仓库 [ADR-001](https://github.com/tracerbiubiubiu/zhuzhao/blob/phase5/docs/adr/adr-001-event-mechanism-l1-steady-state.md)（L1 事件源长期稳态，实施状态以该页为准）
+- zhuzhao 仓库 [ADR-002](https://github.com/tracerbiubiubiu/zhuzhao/blob/phase5/docs/adr/adr-002-asynq-async-task-executor.md)（Asynq 作为异步任务执行器；注意 Asynq 不当事件总线，事件源仍是 L1）
 - zhuzhao 仓库 `docs/roadmap.md`（外部能力集成：activelist 小节；以上三份均不在本仓库）
 
 ## 待同步清单（activelist → zhuzhao 镜像，反向同步债）
@@ -194,6 +201,14 @@ col_<type>(
 2. ~~导入幂等 = 全量替换~~ ✅ 已同步：zhuzhao 侧 ADR-003 / roadmap / phase3-13 M-A 行均已改为「全量替换、保留源 id、不需要每类型业务唯一键」。
 3. ~~roadmap.md activelist 小节滞后~~ ✅ 已更新：审计归 zhuzhao、事件为 zhuzhao 业务操作点显式发布、M-A 无链式依赖均已修正。
 4. ~~zhuzhao 侧 ADR-003 工作区改动未提交~~ ✅ 已提交。
+
+## 2026-11-06 B07-F10 共享库消费者候选
+
+本独立修复分支将既有 utils pin 从 `v0.4.4-0.20261106064944-9ed38f791175` 升至 `v0.4.4-0.20261106080630-cd759a040245`，远端不可变提交 `cd759a0402455731f805ba507bf8401447e00e29`；保留 B07-F11 的 Reader 错误分类，承接内部/compat Transport 在 ReadAll 失败后仍关闭原 Body、保留原错误的生命周期修复。Go 正常解析 pseudo-version，go.sum 与 `go mod verify` 校验；无 replace/GOWORK/本地包或新增库。
+
+activelist 当前生产使用入站 `aksk.GinMiddleware`，无出站 Transport；本次统一共享库候选来源，不宣称本站存在已触发的 Transport 泄漏。主仓实际 Transport 消费点为 `internal/gateway/gateway.go` 的 `buildMount`，对应真实 HTTP 签名/读错关闭回归；taskrunner 仅 `aksk.Sign`，维持 v0.4.2。采用依赖升级以免复制共享实现产生多套签名/错误/关闭语义。两仓候选验证通过后仍由根会话承接联合全门禁；utils main/tag、消费者 main/部署未因本注发布。
+
+本候选已通过 activelist lint/unit/race/build、共享库双协议生命周期永久回归 8 轮与 `go mod verify`；主仓真实 HTTP 回归旧 pin 8/8 红、新 pin 8/8 绿。依赖源码逐字节与固定远端提交核对相同；无新增库，既有 API/数据/权限/配置不变。全量 PG 集成、主仓 acceptance 与最终发布状态仍由联合验收单列。
 
 ## 变更记录
 

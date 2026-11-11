@@ -33,7 +33,8 @@ func RequestID() gin.HandlerFunc {
 // AKSKAuth 服务间 AK/SK HMAC 验签（M-A6；utils aksk canonical 覆盖
 // X-Request-ID / X-Operator——「明文 X-Operator 入签名覆盖」2026-09-03 基线）。
 // callers = 验签密钥环（AK→SK，当前唯一调用方 zhuzhao）；maxBodyBytes = 读体上限
-// （传 cfg.Business.ImportMaxBytes——导入可达 1GiB，勿用 aksk 默认 8MB）。
+// （普通路由由装配传16MiB；import独立走utils GinStreamingMiddleware，
+// 不经过本内存中间件，避免前置截断或把整个大文件载入内存）。
 // 失败响应与归因由 utils 统一承接（2026-09-16 服务间验签统一批）：onFail=
 // response.AKSKFail()（信封 + 分档中文文案）；验签通过后 caller/operator 由
 // GinMiddleware 写入 ctx（原独立 Operator 中间件退役）。

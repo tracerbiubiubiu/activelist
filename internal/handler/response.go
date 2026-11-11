@@ -6,10 +6,12 @@ package handler
 
 import (
 	"fmt"
+	"net/http"
 	"sort"
 
 	"github.com/gin-gonic/gin"
 
+	"github.com/tracerbiubiubiu/zhuzhao-utils/errcode"
 	"github.com/tracerbiubiubiu/zhuzhao-utils/response"
 
 	"github.com/tracerbiubiubiu/activelist/internal/apperr"
@@ -23,6 +25,17 @@ func BadRequest(c *gin.Context, msg string) { response.BadRequest(c, msg) }
 
 // Fail 业务错误渲染：code = 跨服务数值业务码（apperr.Error.Num）。
 func Fail(c *gin.Context, e *apperr.Error) {
+	if e.HTTP >= http.StatusInternalServerError {
+		// Retain the internal diagnostic for the existing request-error log,
+		// never concatenate DB/driver errors or Detail into a public 5xx body.
+		_ = c.Error(e)
+		message := errcode.ErrInternal.Message
+		if e.HTTP == http.StatusServiceUnavailable {
+			message = errcode.ErrServiceUnavailable.Message
+		}
+		response.Fail(c, e.HTTP, e.Num(), message)
+		return
+	}
 	response.Fail(c, e.HTTP, e.Num(), composeMsg(e))
 }
 

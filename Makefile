@@ -1,4 +1,4 @@
-.PHONY: lint fmt test test-integration build
+.PHONY: hooks commit-lint test-commit-lint lint fmt test test-integration build
 
 lint:
 	go vet ./...
@@ -17,3 +17,13 @@ test-integration:
 
 build:
 	go build -trimpath -o bin/apiserver ./cmd/apiserver
+
+# RR-GIT-01: self-contained commit checks; installation is worktree-scoped.
+hooks:
+	sh scripts/install-git-hooks.sh
+
+commit-lint:
+	python3 scripts/commit-policy.py pending
+
+test-commit-lint:
+	python3 scripts/test-commit-policy.py

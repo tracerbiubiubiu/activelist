@@ -62,7 +62,7 @@ func DeleteAllDocs(ctx context.Context, q dbtx, typeName string) (int64, error) 
 	return tag.RowsAffected(), nil
 }
 
-// InsertImportBatch 批量重灌：保留源 id/status/时间戳/操作者，version 一律重置 1
+// InsertImportBatch 批量重灌：保留源 id/status/时间戳/操作者，version 分配全库新 revision
 // （方案 D 定稿）。文件内 id 重复 → PK 23505 → 422。
 func InsertImportBatch(ctx context.Context, q dbtx, typeName string, docs []Document) error {
 	batch := &pgx.Batch{}
@@ -80,7 +80,7 @@ func InsertImportBatch(ctx context.Context, q dbtx, typeName string, docs []Docu
 		}
 		batch.Queue(`INSERT INTO "`+typeName+`"
 			(id, version, status, data, created_by, updated_by, created_at, updated_at)
-			VALUES ($1, 1, $2, $3,
+			VALUES ($1, nextval('public._al_document_revision_seq'::regclass), $2, $3,
 			        COALESCE(NULLIF($4, ''), 'system'), COALESCE(NULLIF($5, ''), 'system'),
 			        $6, $7)`,
 			docs[i].ID, docs[i].Status, raw,
