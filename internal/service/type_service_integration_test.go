@@ -42,13 +42,14 @@ func setupPG(t *testing.T) (*pgxpool.Pool, *service.TypeService) {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
 	defer cancel()
 	container, err := postgres.Run(ctx,
-		"postgres:15-alpine", // 本地已缓存（zhuzhao 同款）
+		"postgres:18.6-trixie@sha256:e3d24f6906d0760bf4da0dae872415391ededefad23fd471c47dc53b0ddf3c42", // 与部署 PG18 基线一致，独立临时数据
 		postgres.WithDatabase("al_a1_test"),
 		postgres.WithUsername("al"),
 		postgres.WithPassword("al_test"),
 		testcontainers.WithWaitStrategy(
 			wait.ForLog("database system is ready to accept connections").
 				WithOccurrence(2).WithStartupTimeout(2*time.Minute),
+			wait.ForListeningPort("5432/tcp"),
 		),
 	)
 	require.NoError(t, err)

@@ -5,6 +5,14 @@
 
 > 以下compose命令从仓库根目录 `cd deploy` 后执行；不要在docs/ops中执行。
 
+## 运行基线升级（2026-11-12 候选）
+
+应用构建使用 Go 1.27.4 / Alpine 3.24，运行镜像 Alpine 3.24.4；PostgreSQL 18.6 使用 Debian trixie 官方镜像，备份工具与服务端同版本。镜像均钉完整版本和多架构摘要；本候选不自动修改已有实例。版本选择、依赖变化和验证边界见 [升级记录](version-upgrade.md)。
+
+PG18 的 `PGDATA=/var/lib/postgresql/18/docker`，Compose 将新的 `pgdata18` 卷挂到 `/var/lib/postgresql`。旧 PG15 `pgdata` 不能直接挂给 PG18；新卷为空不代表旧数据已迁移。已有开发/部署栈先盘点项目、容器、卷、备份与写者，停写后用逻辑备份恢复至独立 PG18，核验数据和业务再切连接。保留旧卷和旧环境；不要执行 `down -v`。切换后若新库已接收写入，回指旧库会丢新写，需重新安排数据迁移，不能称为无损回滚。
+
+PG18 的 `wal_archive18`、`backups18` 与旧卷分开。旧版本 WAL/物理基备只用相同 PG 主版本恢复；升级后重建物理基备和连续 WAL 链，不能将旧 WAL 接到新库。逻辑迁移保留 revision sequence 及其状态；切换后要求客户端重读，避免沿用旧 revision。
+
 ## 快速开始（部署态）
 
 ```sh

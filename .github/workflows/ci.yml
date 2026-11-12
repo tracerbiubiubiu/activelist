@@ -4,6 +4,9 @@ on:
     branches: ["**"]
   pull_request:
 
+permissions:
+  contents: read
+
 # 连续 push 只跑最新提交（过期 run 自动取消，省 runner 时长）
 concurrency:
   group: ci-${{ github.ref }}
@@ -14,7 +17,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
       - name: Commit policy negative checks
@@ -23,10 +26,12 @@ jobs:
         run: python3 scripts/commit-policy.py ci --fetch-missing
   test:
     runs-on: ubuntu-latest
+    env:
+      GOTOOLCHAIN: local
     timeout-minutes: 15 # testcontainers 挂起时兜底（默认 6h）
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
       - name: vet
@@ -40,3 +45,11 @@ jobs:
         env:
           # 同 zhuzhao：CI runner 用完即焚，禁 Ryuk 免跨测试包复用等待超时的假红面
           TESTCONTAINERS_RYUK_DISABLED: "true"
+      - name: Vulnerability scan (current source and tests)
+        run: go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 -test -tags integration ./...
+      - name: Vulnerability scan (current binary)
+        env:
+          CGO_ENABLED: "0"
+        run: |
+          go build -trimpath -o "$RUNNER_TEMP/apiserver" ./cmd/apiserver
+          go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 -mode=binary "$RUNNER_TEMP/apiserver"

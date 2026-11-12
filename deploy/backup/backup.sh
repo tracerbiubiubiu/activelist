@@ -1,10 +1,10 @@
 #!/bin/sh
-# activelist 每日物理备份循环（M-A6 部署件）：
+# activelist 每日逻辑备份循环（M-A6 部署件）：
 #   - 每日 02:00 后执行一次 pg_dump -Fc（自定义压缩格式）
 #   - 保留最近 RETAIN_COUNT 份，超出轮转删除（文件名含日期，按名排序即按时间序）
 #   - WAL 归档由 postgres 服务 archive_command 持续写入 /wal_archive（只读挂载于此）
 # 环境变量（compose 注入）：PGHOST/PGUSER/PGPASSWORD/PGDATABASE/BACKUP_DIR/RETAIN_COUNT
-# 恢复步骤见同目录 README.md。
+# 恢复步骤见 docs/ops/backup.md。
 set -eu
 
 BACKUP_DIR="${BACKUP_DIR:-/backups}"

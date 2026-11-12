@@ -32,6 +32,7 @@ func (batchResultsFake) Exec() (pgconn.CommandTag, error) { return pgconn.Comman
 func (batchResultsFake) Query() (pgx.Rows, error)         { return nil, nil }
 func (batchResultsFake) QueryRow() pgx.Row                { return nil }
 func (batchResultsFake) Close() error                     { return nil }
+func (batchResultsFake) Tx() pgx.Tx                       { return nil }
 
 func TestInsertImportBatch_NilDataNormalized(t *testing.T) {
 	tx := &captureTx{}

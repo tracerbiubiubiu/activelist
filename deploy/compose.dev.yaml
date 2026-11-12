@@ -2,7 +2,7 @@
 # 部署态（双 network + apiserver 多副本 + 备份）= deploy/compose.prod.yaml。
 services:
   postgres:
-    image: postgres:15-alpine # 与 zhuzhao 测试容器同版本；16 拉取受当前网络限制，升级随部署复盘
+    image: postgres:18.6-trixie@sha256:e3d24f6906d0760bf4da0dae872415391ededefad23fd471c47dc53b0ddf3c42 # PG18 使用新卷；旧 PG15 需逻辑迁移，不能直接复用数据目录
     container_name: activelist-dev-postgres
     environment:
       POSTGRES_USER: activelist
@@ -12,7 +12,7 @@ services:
     ports:
       - "15432:5432" # 宿主调试口（避开本机 5432）；本地跑服务配 ACTIVELIST_PG_PORT=15432
     volumes:
-      - pgdata:/var/lib/postgresql/data
+      - pgdata18:/var/lib/postgresql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U activelist -d activelist"]
       interval: 5s
@@ -20,4 +20,4 @@ services:
       retries: 10
 
 volumes:
-  pgdata:
+  pgdata18:
