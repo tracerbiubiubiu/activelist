@@ -109,3 +109,10 @@ R06 统一承接并发唯一、schema/存量兼容、授权查询、敏感字段
 contract 层验证主仓查询 Port、服务签名、字段/schema 与错误兼容；真实 PostgreSQL 层验证并发、DDL/事务、序列与恢复；真实专业接口和企业 IAM 环境单独留证。各层独立登记，外部尚不可达不阻塞 mock/contract，也不能据前两层关闭 real。
 
 本页没有实施R06或新增源事件/订阅链，也没有修改API、迁移、依赖或执行运行验收。AL变更源、受控写adapter和订阅触发属于新增能力互通范围，P7实施前须单列子交付/验收和增量复估；不自动包含在原R06 5–8日、I01或已冻结排期里。代表链首先证明“定时任务→AL受控更新”和“AL变更→一次获准任务”，再逐步扩展；复杂分支/长等待仍按平台后继窗口，不先建通用DAG。后续代码批同步[数据契约](../api/data-contract.md)、[运维](../ops/README.md)和主总账，仍按正常门禁验证。
+
+
+## 2026-11-13逐操作与三链详设后继
+
+主仓[实际操作库存](../../../zhuzhao/docs/design/capability-operation-catalog.md)给出当前route/service/调用者/写主与明确例外；[三链详设](../../../zhuzhao/docs/design/capability-interconnect-detail.md)和[精确Schema](../../../zhuzhao/docs/design/capability-interconnect-detail.schema.json)为CE01–05的目标合同。本仓旧wire仍以API文档和源码为准，未因候选Schema改版。净增、最小UI/运维和测试由[唯一补齐估算](../../../zhuzhao/docs/review/planning-scope-estimates.json)扣重后入当前排程，不另维护平行数字。
+
+AL是文档、revision、generation、效果收据和源事务事实写主；core恢复当前主体并验类型/行/字段，短时准入claims随签名绑定精确operation/hash/目标/fence。AL验claims并在本库同事务完成CAS、receipt和事实，不调用TR或另造IAM。事务型每类型stream head提供完整提交游标，源feed/ACK与执行成功分开；noop不触发，Import一批一世代摘要，逐行展开须另批准。旧网关反代迁移时必须汇入同一受权应用用例，不能留裸proxy旁路。候选SQL8项通过不证明产品已实现该链。
