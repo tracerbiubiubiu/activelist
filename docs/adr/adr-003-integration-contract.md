@@ -1,5 +1,7 @@
 # ADR-003: activelist 独立PG薄层与zhuzhao集成
 
+> **2026-11-13目标后继**：所有者要求AL变化可可靠触发任务，后续源事实边界按[平台集成合同](../design/platform-integration.md)及主仓[ADR-005](../../../zhuzhao/docs/adr/adr-005-capability-invocation-and-source-facts.md)作限域修订：AL仅提供覆盖支持写入口的事务变化凭证/完整feed，平台仍管订阅/业务审计与策略，TR仍管调度。本页“事件归调用方”、D4/G2客户端成功后发布是既有收敛历史，不能覆盖新增源事实目标；独立数据库、薄数据层和网关授权继续有效。新机制未实现，以下原文保留，不把旧SSOT声明解读为禁止该后继设计。
+
 > 2026-11-08 当前效力摘要：独立服务/模块/数据库、PG每类型表+JSONB、单一当前Schema方案D、用户授权归网关且服务间AK/SK验签。事件与业务审计归调用方；本服务保留技术日志和Schema历史。现行字段与协议见 [当前设计](../design/overview.md)、[HTTP](../api/contract.md)、[数据契约](../api/data-contract.md)。
 >
 > 适用次序：上述现行说明及源码 → 09-03职责收敛修订 → 早期原决议。下方“事件总线对接/两层业务审计/Mongo/导入version重置1”、D1旧依赖测试和LockTimeout待办均保留为历史，不具有重新实施指令效力；revision已由000002替代、日志脱敏未启用。候选pin/门禁/部署状态按其明确时点，文档整理不宣称已发布。

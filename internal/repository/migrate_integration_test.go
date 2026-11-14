@@ -23,7 +23,7 @@ func TestMigrateUp(t *testing.T) {
 	defer cancel()
 
 	container, err := postgres.Run(ctx,
-		"postgres:15-alpine", // 本地已缓存（zhuzhao 同款；16-alpine 拉取受网络限制）
+		"postgres:18.6-trixie@sha256:e3d24f6906d0760bf4da0dae872415391ededefad23fd471c47dc53b0ddf3c42", // 与部署 PG18 基线一致，独立临时数据
 		postgres.WithDatabase("al_mig_test"),
 		postgres.WithUsername("al"),
 		postgres.WithPassword("al_test"),
@@ -31,10 +31,15 @@ func TestMigrateUp(t *testing.T) {
 			wait.ForLog("database system is ready to accept connections").
 				WithOccurrence(2).
 				WithStartupTimeout(2*time.Minute),
+			wait.ForListeningPort("5432/tcp"),
 		),
 	)
 	require.NoError(t, err)
-	t.Cleanup(func() { _ = container.Terminate(ctx) })
+	t.Cleanup(func() {
+		cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cleanupCancel()
+		require.NoError(t, container.Terminate(cleanupCtx), "terminate isolated PostgreSQL")
+	})
 
 	dsn, err := container.ConnectionString(ctx, "sslmode=disable")
 	require.NoError(t, err)

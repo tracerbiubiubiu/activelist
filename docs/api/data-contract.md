@@ -15,7 +15,7 @@
 - 数据未知键422；必填缺失/null为422，optional null表示清值。更新为旧data逐键覆盖patch后全量校验，省略键保留，显式null与省略不同。
 - int按JSON数值整数性校验；当前解码走float64，大于2^53的精确整数不是本服务承诺，不能用字符串主键规则推导动态int也无损。
 
-unique_fields为1..N个已声明且不重复的标量int/string字段的组合；空数组为无应用唯一性声明。`DataService.checkUniqueDup` 对活跃行查同键，更新/恢复排除自身，命中409；软删行不占用。**第一档限制**：任一键缺失则不查，SELECT→INSERT并发同键仍可能双写；全量导入不做业务唯一键查重，只有文件id重复等校验。当前无partial unique index硬约束，查重可全扫；未来硬保证/索引需另批实施。
+unique_fields为1..N个已声明且不重复的标量int/string字段的组合；空数组为无应用唯一性声明。`DataService.checkUniqueDup` 对活跃行查同键，更新/恢复排除自身，命中409；软删行不占用。**第一档限制**：任一键缺失则不查，SELECT→INSERT并发同键仍可能双写；全量导入不做业务唯一键查重，只有文件id重复等校验。当前无partial unique index硬约束，查重可全扫；严格档/存量兼容和实施窗口已由 [R06/P7平台集成合同](../design/platform-integration.md)承接，尚未实现。
 
 ## Schema与文档版本
 

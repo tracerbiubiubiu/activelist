@@ -1,6 +1,6 @@
 # 开发与验证
 
-从仓库根目录执行以下命令。先安装 Go（版本由 `go.mod` 指定）与 Make；需要数据库或 Docker 的测试在独立测试环境运行。
+从仓库根目录执行以下命令。先安装 Go 1.27.4（版本由 `go.mod` 指定）与 Make；需要数据库或 Docker 的测试在独立测试环境运行。
 
 ```sh
 make hooks
@@ -9,7 +9,7 @@ make test
 make build
 ```
 
-`make test-integration` 使用 testcontainers 的真实 PostgreSQL；需要可用 Docker。`make fmt` 会改源码格式，文档整理不需要运行它。
+`make test-integration` 使用 testcontainers 的真实 PostgreSQL 18.6；需要可用 Docker。`make fmt` 会改源码格式，文档整理不需要运行它。
 预期为命令退出码 0；门禁通过只证明该次指定环境，不表示候选已合并或部署。
 
 ## 宿主启动与验证
@@ -19,7 +19,8 @@ make build
 从本仓根目录执行：
 
 ```sh
-# 仅用于已确认的开发栈；保留既有 project=deploy、固定容器名和 deploy_pgdata 卷
+# 仅用于全新隔离栈或已按升级方案迁移的开发栈；旧 deploy_pgdata 保留，不直接复用
+# 本模板固定容器名/15432端口；确认旧栈已停并无端口冲突后再启动PG18的新卷
 docker compose -p deploy -f deploy/compose.dev.yaml up -d --wait postgres
 make build
 # 先在本机终端注入 ACTIVELIST_CALLER_ZHUZHAO_SK，与主仓 GATEWAY_SK 对值

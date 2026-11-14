@@ -31,9 +31,13 @@ import (
 func importTestPool(t *testing.T) *pgxpool.Pool {
 	t.Helper()
 	ctx := context.Background()
-	container, err := postgres.Run(ctx, "postgres:15-alpine", postgres.WithDatabase("stream_import"), postgres.WithUsername("al"), postgres.WithPassword("synthetic-test-only"), testcontainers.WithWaitStrategy(wait.ForLog("database system is ready to accept connections").WithOccurrence(2).WithStartupTimeout(time.Minute)))
+	container, err := postgres.Run(ctx, "postgres:18.6-trixie@sha256:e3d24f6906d0760bf4da0dae872415391ededefad23fd471c47dc53b0ddf3c42", postgres.WithDatabase("stream_import"), postgres.WithUsername("al"), postgres.WithPassword("synthetic-test-only"), testcontainers.WithWaitStrategy(wait.ForLog("database system is ready to accept connections").WithOccurrence(2).WithStartupTimeout(time.Minute), wait.ForListeningPort("5432/tcp")))
 	require.NoError(t, err)
-	t.Cleanup(func() { _ = container.Terminate(context.Background()) })
+	t.Cleanup(func() {
+		cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cleanupCancel()
+		require.NoError(t, container.Terminate(cleanupCtx), "terminate isolated PostgreSQL")
+	})
 	dsn, err := container.ConnectionString(ctx, "sslmode=disable")
 	require.NoError(t, err)
 	require.NoError(t, repository.MigrateUp(dsn))

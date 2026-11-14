@@ -5,10 +5,10 @@
 | 层 | 机制 | 频率 | 保留 |
 |---|------|------|------|
 | 逻辑备份 | `pg_dump -Fc`（pgbackup 服务，每日 02:00） | 每日 | 14 份（`RETAIN_COUNT` 可调） |
-| 增量 | WAL 归档（postgres `archive_mode=on`，`archive_timeout=300s`） | 持续 | 随 `wal_archive` 卷 |
+| 增量 | WAL 归档（postgres `archive_mode=on`，`archive_timeout=300s`） | 持续 | 随 `wal_archive18` 卷 |
 | 数据安全底线 | 乐观锁 + 软删 + 导入事务（应用层，M-A3/A5） | — | — |
 
-备份卷：`backups`（pg_dump 产物）、`wal_archive`（WAL 归档，pgbackup 只读挂载）。
+备份卷：`backups18`（PG18 pg_dump 产物）、`wal_archive18`（WAL 归档，pgbackup 只读挂载）。
 
 ## 恢复步骤（pg_dump → 全量恢复）
 
@@ -51,7 +51,7 @@ docker compose -f compose.prod.yaml start pgbackup
 > **无法用归档 WAL 回放**。原「dump 恢复 + restore_command 回放」蓝本不可行。
 > 实测方法的来源和边界见主仓[备份与恢复](https://github.com/tracerbiubiubiu/zhuzhao/blob/phase5/docs/ops/backup.md)；下列为需按现场容器、卷名和目标时间替换的演练示例：
 
-本节命令从本仓根目录先 `cd deploy` 后执行，沿用该恢复目标的 `.env` 与已确认 Compose 项目。PITR 需要事故前已完成的物理基备及从基备到目标时刻的连续 WAL。下面的基备命令只说明如何提前准备，事故后新做基备不能倒退恢复到它之前；已有基备的实际恢复应跳过第1步，把 `base_dir` 设为已校验的物理基备目录。以下示意需在独占演练/恢复环境逐步执行；先设置 `AL_PITR_VOLUME` 为可新建的专属空卷、`AL_PITR_NAME` 为独占容器名、`AL_RECOVERY_TARGET_TIME` 为已核对时区的目标时间。不得把原 `pgdata` 当作解包目标。
+本节命令从本仓根目录先 `cd deploy` 后执行，沿用该恢复目标的 `.env` 与已确认 Compose 项目。PITR 需要事故前已完成的物理基备及从基备到目标时刻的连续 WAL。下面的基备命令只说明如何提前准备，事故后新做基备不能倒退恢复到它之前；已有基备的实际恢复应跳过第1步，把 `base_dir` 设为已校验的物理基备目录。以下示意需在独占演练/恢复环境逐步执行；先设置 `AL_PITR_VOLUME` 为可新建的专属空卷、`AL_PITR_NAME` 为独占容器名、`AL_RECOVERY_TARGET_TIME` 为已核对时区的目标时间。不得把原 `pgdata` / `pgdata18` 当作解包目标。
 
 先从物理基备的 `PG_VERSION` 确认 PostgreSQL 主版本（tar 包先用 `tar -tf base.tar` 定位该文件），再选择同主版本的恢复镜像。下文从源实例读取 `pg_image` 仅适用于已经核对版本相符的情况；恢复较早基备时，当前源实例可能已经升级，不能默认它的现行镜像仍适用。源容器元数据已丢失时，应从备份台账恢复镜像和 WAL 来源信息，不能猜测替代。
 
@@ -88,7 +88,7 @@ docker run --rm --user 0 --entrypoint sh \
 
 # 4. 在独立、无网络的临时实例回放，原WAL卷只读；核验前不切换应用目标
 docker run -d --name "$AL_PITR_NAME" --network none \
-  -v "$AL_PITR_VOLUME:/var/lib/postgresql/data" -v "$wal_volume:/wal_archive:ro" "$pg_image" \
+  -e PGDATA=/restore -v "$AL_PITR_VOLUME:/restore" -v "$wal_volume:/wal_archive:ro" "$pg_image" \
   postgres -c restore_command='cp /wal_archive/%f %p' \
     -c "recovery_target_time=$AL_RECOVERY_TARGET_TIME" -c recovery_target_action=promote
 docker logs "$AL_PITR_NAME"
@@ -103,8 +103,8 @@ docker logs "$AL_PITR_NAME"
 
 - 备份失败**不静默**：pgbackup 日志可见（`docker compose -f compose.prod.yaml logs pgbackup`）；失败当日每 10 分钟自动重试、失败日不做轮转（防把好备份轮掉）、成功才标记当日完成；
 - **常见失败根因**：postgres 未运行（pg_dump 报 `could not translate host name "postgres"`）——postgres 已配 `restart: unless-stopped` 自愈；若手工 `docker compose -f compose.prod.yaml stop postgres` 停库，备份会持续重试失败直至库恢复，属预期行为；
-- `backups` / `wal_archive` 卷建议纳入宿主机级外部备份（卷快照/同步），防单机盘损；
+- 当前 `backups18` / `wal_archive18`（历史为 `backups` / `wal_archive`）卷建议纳入宿主机级外部备份（卷快照/同步），防单机盘损；
 - 保留期调整：`RETAIN_COUNT`（份数，默认 14）。
 
 
-恢复前核对实际compose项目名、backups/wal_archive卷名与文件；文中容器/卷名是演练示例，不替代现场盘点。revision序列状态必须在备份中，恢复旧备份后隔离旧客户端缓存并重读，见 [部署升级](deployment.md)。
+恢复前核对实际compose项目名、backups18/wal_archive18（或对应历史）卷名与文件；文中容器/卷名是演练示例，不替代现场盘点。revision序列状态必须在备份中，恢复旧备份后隔离旧客户端缓存并重读，见 [部署升级](deployment.md)。
