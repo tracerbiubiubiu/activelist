@@ -75,11 +75,11 @@ activelist 适合有限结构的清单和映射数据。CMDB、风险、身份�
 
 ```sh
 make hooks
-make lint
-make test
-make build
-make test-integration  # Docker + testcontainers 的真实 PostgreSQL 测试
+make quality-plan
+make quality-check
 ```
+
+先审阅计划再执行：quality-check完成文档/针对检查；ordinary档要求在独占环境手工跑完整门禁并留存证据，不自动运行产品测试。纯说明/设计/报告走文档检查；候选Schema/规划JSON/隔离参考或工具加针对验证；业务、正式协议及门禁规则等走完整产品检查，混合取最高档、未知从严。原lint/test/build与真实集成命令见[开发指南](docs/guides/development.md#分档门禁)，测试先行要求保持。
 
 工具链与容器升级的候选状态见 [版本升级记录](docs/ops/version-upgrade.md)；当前检出代码、main 与实际部署是不同状态。
 

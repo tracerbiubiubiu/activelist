@@ -1,16 +1,32 @@
 # 开发与验证
 
-从仓库根目录执行以下命令。先安装 Go 1.27.4（版本由 `go.mod` 指定）与 Make；需要数据库或 Docker 的测试在独立测试环境运行。
+从仓库根目录执行以下命令。分档入口依赖 Git、Python 3 与 Make；ordinary 产品检查另需 Go 1.27.4（版本由 `go.mod` 指定）。需要数据库或 Docker 的测试在独立测试环境运行。
 
 ```sh
 make hooks
-make lint
-make test
-make build
+make quality-plan                 # 先审阅文件范围、档位与计划
+make quality-check                # 文档/针对检查；ordinary提示手工完整门禁后退出
+# 基线不是 origin/main 时显式指定：make quality-check BASE=<本地已存在的基线ref>
 ```
 
 `make test-integration` 使用 testcontainers 的真实 PostgreSQL 18.6；需要可用 Docker。`make fmt` 会改源码格式，文档整理不需要运行它。
 预期为命令退出码 0；门禁通过只证明该次指定环境，不表示候选已合并或部署。
+
+## 分档门禁
+
+`make quality-plan`只输出计划，`make quality-check`执行同源分类及document/reference检查；ordinary档退出并指向指南中的原门禁，须在独占环境手工执行，不自动连接服务或把打印清单当验证通过。两者默认`BASE=origin/main`，对基线到HEAD的完整差异加暂存、未暂存、未跟踪文件分类，避免只看末次提交。正式push/PR由事件精确SHA窗口分类；base缺失强制ordinary并披露无法历史比较，异常计划或候选不一致拒绝，不猜测成文档豁免。
+
+- `document`：纯说明、设计草稿、报告与导航，仅跑文档/本地链接检查及始终启用的提交规范；不声称运行产品测试。
+- `reference`：候选Schema、规划JSON、已隔离参考或工具，增加受影响文件的Schema/JSON/工具语法与专属验证；不能据此认定产品集成已通过。
+- `ordinary`：业务代码、运行配置、依赖、迁移、正式协议、产品测试、CI、分类器、门禁/豁免规则及未知文件，运行完整适用产品门禁；混合改动取最高档。门禁改动自身也在此档，测试先行纪律保持。
+
+分类器以仓内明确路径规则判定，文件扩展名本身不豁免。`document-check`始终执行；`reference-check`按计划执行；原`test` job只在`runtime=true`执行。最终`quality-gate`以`always()`汇总实际job结果：应跑项缺失、失败、取消或skipped均拒绝，计划外产品job的skipped须明确。必需检查策略是否已在远端启用需另核，不能从本地配置推断。
+
+完整产品门禁保留以下既有命令与环境要求：
+
+- `make lint`、`make test`、`make build`；CI保留`go vet ./...`、gofmt、`go test -race ./...`。
+- `go test -tags integration -race ./...`使用testcontainers独占PG；原`make test-integration`入口保留。本地保留Ryuk清理，CI的临时runner保留既有`TESTCONTAINERS_RYUK_DISABLED=true`。
+- `go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 -test -tags integration ./...`；`CGO_ENABLED=0 go build -trimpath -o <临时目录>/apiserver ./cmd/apiserver`后运行同版本`govulncheck -mode=binary <临时目录>/apiserver`。
 
 ## 宿主启动与验证
 
@@ -63,4 +79,4 @@ amend 保护，`commit-msg` 先挡消息违规，`pre-push` 按 Git 提供的每
 
 固定启用基线见 `scripts/commit-policy-baseline`：仅其祖先为已推送存量，不改史、不自动前移。
 CI push 使用事件 before/after，PR 使用真实 base/head SHA，初推与 force push 均有覆盖；
-缺对象精确获取仍失败、非法 SHA 或浅克隆一律拒绝，不回退近 20 笔。现有代码测试 CI 保持。
+缺对象精确获取仍失败、非法 SHA 或浅克隆一律拒绝，不回退近 20 笔。产品测试命令保留，按本页分档计划运行。
