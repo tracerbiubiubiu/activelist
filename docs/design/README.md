@@ -8,9 +8,9 @@
 
 ## 目标设计与实施窗口
 
-[平台集成合同](platform-integration.md)承接R06/P7的并发唯一、schema、授权查询、导入恢复；另补AL写主最小变更凭证、批次/manifest、主仓订阅与受控任务写入目标。后者新增范围按主仓[互通增量](../../../zhuzhao/docs/review/capability-interconnect-supplement.md)单列复估，不能计入旧R06原价。
+[平台集成合同](platform-integration.md)承接R06/P7的并发唯一、schema、授权查询、导入恢复；另补AL写主最小变更凭证、批次/manifest、主仓订阅与受控任务写入目标。后者新增范围按主仓[互通增量](../../../zhuzhao/docs/planning/capability-interconnect-supplement.md)单列复估，不能计入旧R06原价。
 
-统一ID及调用语义以[主仓能力调用合同](../../../zhuzhao/docs/design/capability-invocation-contract.md)为权威；排期、依赖和状态只回[唯一总账](../../../zhuzhao/docs/review/planning-backlog.md)，本页不维护第二份进度。
+统一ID及调用语义以[主仓能力调用合同](../../../zhuzhao/docs/design/capability-invocation-contract.md)为权威；排期、依赖和状态只回[唯一总账](../../../zhuzhao/docs/planning/planning-backlog.md)，本页不维护第二份进度。
 
 ## 运行验证与历史
 

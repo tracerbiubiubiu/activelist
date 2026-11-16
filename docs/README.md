@@ -10,7 +10,7 @@
 ## 目标设计与计划
 
 - [设计导航](design/README.md)区分当前解释与候选合同；[平台集成合同](design/platform-integration.md)承接R06及AL受权写、源事实/订阅等新增目标。
-- 排期、设计成熟度和新增范围只读主仓[唯一总账](../../zhuzhao/docs/review/planning-backlog.md)及[互通增量](../../zhuzhao/docs/review/capability-interconnect-supplement.md)，不在本仓复制预算。
+- 排期、设计成熟度和新增范围只读主仓[唯一总账](../../zhuzhao/docs/planning/planning-backlog.md)及[互通增量](../../zhuzhao/docs/planning/capability-interconnect-supplement.md)，不在本仓复制预算。
 
 ## 开发、运行与验证
 
@@ -20,3 +20,7 @@
 ## 决策与历史
 
 [ADR](adr/README.md)保留决策及后继关系；[正式报告与历史](review/README.md)按冻结时点追溯。原MongoDB三进程方案不作为现行接口或实施指令，旧门禁收据也不证明新候选已验证。
+
+## 统一入口与Git保留范围
+
+全项目阅读从主仓[文档总入口](../../zhuzhao/docs/README.md)开始，当前计划统一在[planning](../../zhuzhao/docs/planning/README.md)；本仓继续维护随源码版本变化的合同、指南和正式结论。原始调研、执行卡、原日志、截图、备份与纯操作收据归仓库外项目档案，短期执行产物可留ignored `.codex/`；材料ID与保留决定见[材料目录](../../zhuzhao/docs/materials.md)。机器台账、冻结来源、Schema样例和必要验证依据继续Git跟踪，不按扩展名批量忽略。

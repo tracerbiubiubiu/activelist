@@ -1,6 +1,6 @@
 # 平台集成、数据安全与演进合同
 
-> 2026-11-11 重规划。当前行为仍以[当前设计](overview.md)、[HTTP](../api/contract.md)和[数据契约](../api/data-contract.md)为准；本文描述后续承接，不宣称新增能力已实现。原R06的排期、工作量和关闭证据唯一登记在主仓[规划总账](../../../zhuzhao/docs/review/planning-backlog.md)的 **R06 / P7**；本页不另立排期，新增互通范围按下述增量窗口归主仓复估。
+> 2026-11-11 重规划。当前行为仍以[当前设计](overview.md)、[HTTP](../api/contract.md)和[数据契约](../api/data-contract.md)为准；本文描述后续承接，不宣称新增能力已实现。原R06的排期、工作量和关闭证据唯一登记在主仓[规划总账](../../../zhuzhao/docs/planning/planning-backlog.md)的 **R06 / P7**；本页不另立排期，新增互通范围按下述增量窗口归主仓复估。
 >
 > **2026-11-13能力互通补充**：本页新增AL受权写能力、写主变更凭证和变更触发任务的目标边界，统一合同见[能力调用合同](../../../zhuzhao/docs/design/capability-invocation-contract.md)。旧R06的并发/查询/导入范围继续保留；新增源事件/订阅/任务adapter须在P7前单列增量并复估，不能默认塞进R06原5–8日或I01原预算。当前仅设计阶段快照，T0未启动，没有实现或真实链验收。
 
@@ -113,6 +113,6 @@ contract 层验证主仓查询 Port、服务签名、字段/schema 与错误兼�
 
 ## 2026-11-13逐操作与三链详设后继
 
-主仓[实际操作库存](../../../zhuzhao/docs/design/capability-operation-catalog.md)给出当前route/service/调用者/写主与明确例外；[三链详设](../../../zhuzhao/docs/design/capability-interconnect-detail.md)和[精确Schema](../../../zhuzhao/docs/design/capability-interconnect-detail.schema.json)为CE01–05的目标合同。本仓旧wire仍以API文档和源码为准，未因候选Schema改版。净增、最小UI/运维和测试由[唯一补齐估算](../../../zhuzhao/docs/review/planning-scope-estimates.json)扣重后入当前排程，不另维护平行数字。
+主仓[实际操作库存](../../../zhuzhao/docs/design/capability-operation-catalog.md)给出当前route/service/调用者/写主与明确例外；[三链详设](../../../zhuzhao/docs/design/capability-interconnect-detail.md)和[精确Schema](../../../zhuzhao/docs/design/capability-interconnect-detail.schema.json)为CE01–05的目标合同。本仓旧wire仍以API文档和源码为准，未因候选Schema改版。净增、最小UI/运维和测试由[唯一补齐估算](../../../zhuzhao/docs/planning/planning-scope-estimates.json)扣重后入当前排程，不另维护平行数字。
 
 AL是文档、revision、generation、效果收据和源事务事实写主；core恢复当前主体并验类型/行/字段，短时准入claims随签名绑定精确operation/hash/目标/fence。AL验claims并在本库同事务完成CAS、receipt和事实，不调用TR或另造IAM。事务型每类型stream head提供完整提交游标，源feed/ACK与执行成功分开；noop不触发，Import一批一世代摘要，逐行展开须另批准。旧网关反代迁移时必须汇入同一受权应用用例，不能留裸proxy旁路。候选SQL8项通过不证明产品已实现该链。

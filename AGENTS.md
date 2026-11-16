@@ -6,7 +6,7 @@
 
 - 本仓是独立PG动态清单薄服务，拥有类型/schema和数据写主；新增源事实按目标合同实施，用户授权/业务策略归主仓，任务调度归TR。
 - [文档导航](docs/README.md)区分现行实现、目标设计、运行验证与历史；字段/接口以本仓[API](docs/api/README.md)和实际源码为准。
-- 全生态工程、API、安全、迁移与测试纪律遵[主仓standards](../zhuzhao/docs/standards.md)；新需求/状态/估算只回填[唯一总账](../zhuzhao/docs/review/planning-backlog.md)。
+- 全生态工程、API、安全、迁移与测试纪律遵[主仓standards](../zhuzhao/docs/standards.md)；新需求/状态/估算只回填[唯一总账](../zhuzhao/docs/planning/planning-backlog.md)。
 - [平台集成合同](docs/design/platform-integration.md)含未实施目标，不能将源事件/订阅、受控任务写入等设计当成当前已有能力。
 
 ## 开发与验证
