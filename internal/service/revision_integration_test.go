@@ -91,10 +91,10 @@ func TestRevision_AllWritersAndRollback(t *testing.T) {
 	updated, err := data.Update(ctx, "revision_a", a.ID, service.UpdateInput{Version: a.Version, Data: map[string]any{"name": "update"}}, "audit")
 	require.NoError(t, err)
 	require.Greater(t, updated.Version, b.Version)
-	deleted, err := data.SoftDelete(ctx, "revision_a", a.ID, "audit")
+	deleted, err := data.SoftDelete(ctx, "revision_a", a.ID, "audit", nil)
 	require.NoError(t, err)
 	require.Greater(t, deleted.Version, updated.Version)
-	restored, err := data.Restore(ctx, "revision_a", a.ID, "audit")
+	restored, err := data.Restore(ctx, "revision_a", a.ID, "audit", nil)
 	require.NoError(t, err)
 	require.Greater(t, restored.Version, deleted.Version)
 

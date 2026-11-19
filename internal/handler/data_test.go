@@ -36,6 +36,14 @@ func TestDataBindingNegatives(t *testing.T) {
 			strings.NewReader(`{"data":[1,2]}`))},
 		{"更新缺 version", httptest.NewRequest(http.MethodPost, "/api/v1/data/k/1/update",
 			strings.NewReader(`{"data":{"a":1}}`))},
+		// 软删 body 可选（旧客户端空 body/{} 维持旧契约）；提供了就必须是可解析的
+		// JSON 对象——垃圾 body 不得被静默吞掉后当成「无版本保护」执行迁移
+		{"删除 body 非法 JSON", httptest.NewRequest(http.MethodPost, "/api/v1/data/k/1/delete",
+			strings.NewReader(`{bad`))},
+		{"删除 body 非对象", httptest.NewRequest(http.MethodPost, "/api/v1/data/k/1/delete",
+			strings.NewReader(`[1]`))},
+		{"恢复 version 非整数", httptest.NewRequest(http.MethodPost, "/api/v1/data/restore",
+			strings.NewReader(`{"type_name":"k","id":"5","version":"abc"}`))},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

@@ -210,8 +210,7 @@ func (s *DataService) Update(ctx context.Context, typeName string, id int64, in 
 			WithDetail("id", id).WithDetail("status", doc.Status)
 	}
 	if doc.Version != in.Version {
-		return nil, apperr.New(409, apperr.CodeConflict, "版本不匹配（数据已被并发修改）").
-			WithDetail("expected_version", in.Version).WithDetail("current_version", doc.Version)
+		return nil, errVersionMismatch(in.Version, doc.Version)
 	}
 
 	merged := mergeData(doc.Data, in.Data)
@@ -236,9 +235,16 @@ func (s *DataService) Update(ctx context.Context, typeName string, id int64, in 
 }
 
 // SoftDelete 软删除（幂等：已删行返回现态不变；A2）。
-func (s *DataService) SoftDelete(ctx context.Context, typeName string, id int64, operator string) (*repository.Document, error) {
+// expectedVersion 可选版本保护（2026-11-19）：nil = 旧契约无条件迁移；非 nil 须为
+// 正整数（非正按 Update 同规则 422），实际迁移前于行锁内核验与现版本相等，不等
+// 409 零写（与 Update 同类型）；目标态相同的幂等重复不校验版本——版本判断仅约束
+// 实际迁移。
+func (s *DataService) SoftDelete(ctx context.Context, typeName string, id int64, operator string, expectedVersion *int64) (*repository.Document, error) {
 	def, err := s.gateType(ctx, typeName, false)
 	if err != nil {
+		return nil, err
+	}
+	if err := checkOptionalVersion(expectedVersion); err != nil {
 		return nil, err
 	}
 	tx, err := s.pool.Begin(ctx)
@@ -255,8 +261,11 @@ func (s *DataService) SoftDelete(ctx context.Context, typeName string, id int64,
 		return nil, err
 	}
 	if doc.Status == repository.RowStatusActive {
+		if expectedVersion != nil && doc.Version != *expectedVersion {
+			return nil, errVersionMismatch(*expectedVersion, doc.Version)
+		}
 		nd, moved, err := repository.UpdateDocStatus(ctx, tx, def.TypeName, id,
-			repository.RowStatusActive, repository.RowStatusDeleted, operator)
+			repository.RowStatusActive, repository.RowStatusDeleted, operator, expectedVersion)
 		if err != nil {
 			return nil, err
 		}
@@ -271,9 +280,14 @@ func (s *DataService) SoftDelete(ctx context.Context, typeName string, id int64,
 }
 
 // Restore 恢复软删数据（幂等：active 行返回现态不变；A2「恢复后可写」）。
-func (s *DataService) Restore(ctx context.Context, typeName string, id int64, operator string) (*repository.Document, error) {
+// expectedVersion 可选版本保护：语义同 SoftDelete——nil 旧契约；相等才实际迁移；
+// 版本拦截先于恢复查重（不匹配时零写、不触发唯一键查重）。
+func (s *DataService) Restore(ctx context.Context, typeName string, id int64, operator string, expectedVersion *int64) (*repository.Document, error) {
 	def, err := s.gateType(ctx, typeName, false)
 	if err != nil {
+		return nil, err
+	}
+	if err := checkOptionalVersion(expectedVersion); err != nil {
 		return nil, err
 	}
 	tx, err := s.pool.Begin(ctx)
@@ -290,12 +304,15 @@ func (s *DataService) Restore(ctx context.Context, typeName string, id int64, op
 		return nil, err
 	}
 	if doc.Status == repository.RowStatusDeleted {
+		if expectedVersion != nil && doc.Version != *expectedVersion {
+			return nil, errVersionMismatch(*expectedVersion, doc.Version)
+		}
 		// 恢复前查重：软删行不占用唯一性，但恢复成 active 时不得与活跃行撞键
 		if err := s.checkUniqueDup(ctx, tx, def, doc.Data, id); err != nil {
 			return nil, err
 		}
 		nd, moved, err := repository.UpdateDocStatus(ctx, tx, def.TypeName, id,
-			repository.RowStatusDeleted, repository.RowStatusActive, operator)
+			repository.RowStatusDeleted, repository.RowStatusActive, operator, expectedVersion)
 		if err != nil {
 			return nil, err
 		}
@@ -351,6 +368,23 @@ func mapDataValidationError(ctx context.Context, q schemaReader, err error, def 
 	default:
 		return ae
 	}
+}
+
+// checkOptionalVersion 软删/恢复可选版本保护的形态校验（非正按 Update 现行
+// 验证规则 422——version 提供即须为取到的真实 revision，0/负值必是调用方误用）。
+func checkOptionalVersion(expectedVersion *int64) error {
+	if expectedVersion != nil && *expectedVersion < 1 {
+		return apperr.New(422, apperr.CodeValidation, "version 必填（乐观锁，取最近一次读到的 version）").
+			WithDetail("field", "version")
+	}
+	return nil
+}
+
+// errVersionMismatch 版本不匹配 409（与 Update 同类型同坐标——更新/软删/恢复
+// 共用同一乐观锁冲突契约，客户端按同一错误形态重读重试）。
+func errVersionMismatch(expected, current int64) *apperr.Error {
+	return apperr.New(409, apperr.CodeConflict, "版本不匹配（数据已被并发修改）").
+		WithDetail("expected_version", expected).WithDetail("current_version", current)
 }
 
 // setLockTimeout 常规写事务 5s 锁等待上限（§7：导入长事务持锁期间，常规写快速

@@ -15,10 +15,10 @@
 | `GET /data/:typeName` | 复合游标分页与筛选，见下。 |
 | `GET /data/:typeName/:id` | id单查，软删行仍可见。 |
 | `POST /data/:typeName/:id/update` | body `{data:{...},version:数字}`，合并后全量校验并CAS更新。 |
-| `POST /data/:typeName/:id/delete` | 幂等软删，返回删除后完整文档。 |
-| `POST /data/restore` | body type_name/id（字符串），幂等恢复，检查活跃唯一键冲突。 |
+| `POST /data/:typeName/:id/delete` | 幂等软删，返回删除后完整文档；body可选，空body/{}维持旧契约，带正整数version时行锁内核验，不匹配409零写。 |
+| `POST /data/restore` | body type_name/id（字符串），可选version语义同delete；幂等恢复，版本拦截先于活跃唯一键冲突检查。 |
 | `GET /data/:typeName/export` | 含软删行的裸JSON数组，文件不走信封。 |
-| `POST /data/:typeName/import` | body为裸JSON数组，全量替换，不是追加/upsert。 |
+| `POST /data/:typeName/import` | body为单个裸JSON数组，全量替换，不是追加/upsert；数组闭合后仅允许尾随空白，多余内容按400拒绝、事务回滚（CMP-R02）。 |
 
 表中路径均接 `/api/v1`。保留资源型data路径为现有契约，文档整理不改路由。类型schema/deprecate与restore的旧POST路径已退役，不按Mongo原稿接入。
 

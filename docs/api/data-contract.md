@@ -21,7 +21,7 @@ unique_fields为1..N个已声明且不重复的标量int/string字段的组合�
 
 Schema演进请求是完整fields+unique_fields定义及当前metadata version，非字段merge；并发后到者409，重读后重提。去掉unique_fields等于提交空声明，调用方必须理解全量替换语义。兼容变更零数据迁移；破坏性变更在数据下次写时懒校验，原Mongo多版本算法不适用。
 
-数据文档结构含id（JSON字符串）、version（数值revision）、status（active/deleted）、data、created_by/updated_by和时间戳。revision由数据库持久 `_al_document_revision_seq` 分配，正整数可跳号；不同表共享，所有新写、软删/恢复/导入都使用新revision。文件自带version不复用，空导入与ID重用也不能重置该序列。更新必须携带最近读到的version，冲突409；不得客户端+1。
+数据文档结构含id（JSON字符串）、version（数值revision）、status（active/deleted）、data、created_by/updated_by和时间戳。revision由数据库持久 `_al_document_revision_seq` 分配，正整数可跳号；不同表共享，所有新写、软删/恢复/导入都使用新revision。文件自带version不复用，空导入与ID重用也不能重置该序列。更新必须携带最近读到的version，冲突409；软删/恢复可选携带version（缺省或空body/{}维持旧契约无条件迁移），携带时实际迁移须行锁内与当前行版本相等，不匹配409零写，非正version按更新同规则422，重复到达目标态仍幂等不校验版本；不得客户端+1。
 
 原地升级和恢复时须包含序列状态、停止旧writer；恢复旧备份、down/up重建序列等不提供跨数据库世代，必须隔离旧缓存并要求重读。详见 [升级和部署](../ops/deployment.md)。
 

@@ -3,6 +3,9 @@
 package handler
 
 import (
+	"bytes"
+	"encoding/json"
+	"io"
 	"net/http"
 	"strconv"
 	"time"
@@ -118,13 +121,19 @@ func (d *Deps) updateData(c *gin.Context) {
 	OK(c, doc)
 }
 
-// deleteData 软删除（幂等；返回删除后完整文档）。
+// deleteData 软删除（幂等；返回删除后完整文档）。body 可选（2026-11-19 版本保护）：
+// 空 body / {} = 旧契约无条件迁移；带正整数 version 时行锁内核验（409 零写语义
+// 在 service）。AL 先于 UI——旧消费者可在新服务端保持零改动。
 func (d *Deps) deleteData(c *gin.Context) {
 	id, ok := pathID(c)
 	if !ok {
 		return
 	}
-	doc, err := d.Data.SoftDelete(c.Request.Context(), c.Param("typeName"), id, currentOperator(c))
+	version, ok := optionalVersionBody(c)
+	if !ok {
+		return
+	}
+	doc, err := d.Data.SoftDelete(c.Request.Context(), c.Param("typeName"), id, currentOperator(c), version)
 	if err != nil {
 		Fail(c, asAppErr(err))
 		return
@@ -132,18 +141,43 @@ func (d *Deps) deleteData(c *gin.Context) {
 	OK(c, doc)
 }
 
+// optionalVersionBody 软删端点可选 body 解析：空 body（含纯空白）→ nil 旧契约；
+// {} / {"version":null} 同旧契约；{"version":N} → N（正整数校验归 service，与
+// Update 同规则）；其余非法 JSON / 非 JSON 对象 → 400——垃圾 body 不得被静默
+// 吞掉后当成「无版本保护」执行迁移。
+func optionalVersionBody(c *gin.Context) (*int64, bool) {
+	raw, err := io.ReadAll(c.Request.Body)
+	if err != nil {
+		BadRequest(c, "请求体读取失败")
+		return nil, false
+	}
+	if len(bytes.TrimSpace(raw)) == 0 {
+		return nil, true
+	}
+	var in struct {
+		Version *int64 `json:"version"`
+	}
+	if err := json.Unmarshal(raw, &in); err != nil {
+		BadRequest(c, "请求体解析失败（body 须为 JSON 对象，可含正整数 version）")
+		return nil, false
+	}
+	return in.Version, true
+}
+
 // restoreData 恢复软删数据（幂等；返回恢复后完整文档）。body={type_name,id}
-// （zhuzhao 风格——P4-W5 前置批整改，标识入 body）。
+// （zhuzhao 风格——P4-W5 前置批整改，标识入 body）；version 可选（2026-11-19
+// 版本保护，缺省旧契约无条件恢复）。
 func (d *Deps) restoreData(c *gin.Context) {
 	var in struct {
 		TypeName string `json:"type_name" binding:"required"`
 		ID       int64  `json:"id,string" binding:"required"` // ,string 对齐 Document 导出形态（审计：int64 全 string 纪律）
+		Version  *int64 `json:"version"`                      // 可选版本保护：缺省旧契约；正整数校验/行锁内核验在 service
 	}
 	if err := c.ShouldBindJSON(&in); err != nil {
 		BadRequest(c, "请求体解析失败（type_name 与 id 必填，id 须为整数）")
 		return
 	}
-	doc, err := d.Data.Restore(c.Request.Context(), in.TypeName, in.ID, currentOperator(c))
+	doc, err := d.Data.Restore(c.Request.Context(), in.TypeName, in.ID, currentOperator(c), in.Version)
 	if err != nil {
 		Fail(c, asAppErr(err))
 		return
