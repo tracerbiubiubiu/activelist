@@ -6,6 +6,7 @@ package transfer
 
 import (
 	"bufio"
+	"bytes"
 	"encoding/json"
 	"errors"
 	"io"
@@ -55,7 +56,8 @@ func EncodeDocs(w io.Writer, next func() (*repository.Document, error)) error {
 // 解码器内部仅持有当前批。body 超 MaxBytesReader 上限时透传 *http.MaxBytesError
 // （调用方映射 413）——不得吞进 badFile 的 400 文案里丢语义。
 func DecodeBatches(r io.Reader, batchSize int, handle func([]repository.Document) error) error {
-	dec := json.NewDecoder(bufio.NewReaderSize(r, 1<<20))
+	source := bufio.NewReaderSize(r, 1<<20)
+	dec := json.NewDecoder(source)
 	tok, err := dec.Token()
 	if err != nil {
 		if isMaxBytes(err) {
@@ -90,6 +92,27 @@ func DecodeBatches(r io.Reader, batchSize int, handle func([]repository.Document
 	}
 	if d, ok := tok.(json.Delim); !ok || d != ']' {
 		return badFile("数组未闭合")
+	}
+	// Consume buffered and remaining bytes without allocating a second JSON
+	// value. Keep checking size even after finding invalid trailing content.
+	tail := io.MultiReader(dec.Buffered(), source)
+	var buf [4096]byte
+	hasExtra := false
+	for {
+		n, err := tail.Read(buf[:])
+		hasExtra = hasExtra || len(bytes.Trim(buf[:n], " \t\r\n")) != 0
+		if isMaxBytes(err) {
+			return err
+		}
+		if errors.Is(err, io.EOF) {
+			break
+		}
+		if err != nil {
+			return badFile("解析失败: " + err.Error())
+		}
+	}
+	if hasExtra {
+		return badFile("数组后存在多余内容")
 	}
 	return nil
 }

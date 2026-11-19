@@ -86,14 +86,14 @@ func TestImportStreaming_ProviderAcceptsLargeSignedBody(t *testing.T) {
 	})
 }
 
-// Failure must occur before import's destructive transaction. Preserve a real
-// existing document through authentication, size, read, parse and storage errors.
+// Preserve a real existing document through authentication, size, read, parse
+// and storage errors, including validation after the replacement was staged.
 func TestImportStreaming_FailurePreservesDataAndCleansSpool(t *testing.T) {
 	_, types, data := streamServices(t, 64)
 	ctx := context.Background()
 	original, err := data.Insert(ctx, "stream_import", service.InsertInput{Data: map[string]any{"name": "keep me"}}, "E800111")
 	require.NoError(t, err)
-	for _, mode := range []string{"size", "bad-signature", "invalid-JSON", "read-error", "cancelled", "disk-error"} {
+	for _, mode := range []string{"size", "bad-signature", "invalid-JSON", "read-error", "cancelled", "disk-error", "trailing-extra"} {
 		t.Run(mode, func(t *testing.T) {
 			dir := t.TempDir()
 			tmpdir := dir
@@ -112,6 +112,13 @@ func TestImportStreaming_FailurePreservesDataAndCleansSpool(t *testing.T) {
 			}
 			if mode == "invalid-JSON" {
 				body = []byte("[")
+				want = http.StatusBadRequest
+			}
+			// CMP-R02：数组闭合后带第二段 payload 必须整体拒绝并回滚，
+			// 不得静默忽略尾巴、以部分文件冒充全部提交成功。
+			if mode == "trailing-extra" {
+				body = append(body, ' ', '[', ']')
+				require.LessOrEqual(t, len(body), 64, "case must reach tail validation")
 				want = http.StatusBadRequest
 			}
 			if mode == "disk-error" {
@@ -139,6 +146,7 @@ func TestImportStreaming_FailurePreservesDataAndCleansSpool(t *testing.T) {
 			got, err := data.Get(ctx, "stream_import", original.ID)
 			require.NoError(t, err)
 			require.Equal(t, "keep me", got.Data["name"])
+			require.Equal(t, original.Version, got.Version)
 			files, err := os.ReadDir(dir)
 			require.NoError(t, err)
 			expected := 0

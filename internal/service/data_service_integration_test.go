@@ -127,7 +127,7 @@ func TestA2_SoftDeleteFlow(t *testing.T) {
 	require.NoError(t, err)
 	doc := insertDoc(t, dsvc, "soft_item", 1, "a")
 
-	del, err := dsvc.SoftDelete(ctx, "soft_item", doc.ID, "system")
+	del, err := dsvc.SoftDelete(ctx, "soft_item", doc.ID, "system", nil)
 	require.NoError(t, err)
 	require.Equal(t, repository.RowStatusDeleted, del.Status)
 	require.EqualValues(t, 2, del.Version) // 状态迁移同样递增版本（旧文档立即过期）
@@ -149,13 +149,13 @@ func TestA2_SoftDeleteFlow(t *testing.T) {
 	require.Equal(t, "CONFLICT", mustAE(t, err).Code)
 
 	// 重复软删幂等：现态返回、版本不再递增
-	again, err := dsvc.SoftDelete(ctx, "soft_item", doc.ID, "system")
+	again, err := dsvc.SoftDelete(ctx, "soft_item", doc.ID, "system", nil)
 	require.NoError(t, err)
 	require.Equal(t, del.Version, again.Version)
 	require.Equal(t, repository.RowStatusDeleted, again.Status)
 
 	// 恢复 → active、版本 +1、可写
-	res, err := dsvc.Restore(ctx, "soft_item", doc.ID, "system")
+	res, err := dsvc.Restore(ctx, "soft_item", doc.ID, "system", nil)
 	require.NoError(t, err)
 	require.Equal(t, repository.RowStatusActive, res.Status)
 	require.EqualValues(t, 3, res.Version)
@@ -166,7 +166,7 @@ func TestA2_SoftDeleteFlow(t *testing.T) {
 	require.Equal(t, float64(5), upd.Data["qty"])
 
 	// 重复恢复幂等：active 行直接返回现态——版本已随中间的更新递增，不再变动
-	res2, err := dsvc.Restore(ctx, "soft_item", doc.ID, "system")
+	res2, err := dsvc.Restore(ctx, "soft_item", doc.ID, "system", nil)
 	require.NoError(t, err)
 	require.Equal(t, upd.Version, res2.Version)
 	require.Equal(t, repository.RowStatusActive, res2.Status)
@@ -185,7 +185,7 @@ func TestList_IncludeDeleted(t *testing.T) {
 	docA := insertDoc(t, dsvc, "incl_item", 1, "a")
 	docB := insertDoc(t, dsvc, "incl_item", 2, "b")
 
-	_, err = dsvc.SoftDelete(ctx, "incl_item", docA.ID, "system")
+	_, err = dsvc.SoftDelete(ctx, "incl_item", docA.ID, "system", nil)
 	require.NoError(t, err)
 
 	// 缺省：软删排除（仅 b）
@@ -204,7 +204,7 @@ func TestList_IncludeDeleted(t *testing.T) {
 	require.Equal(t, repository.RowStatusDeleted, mixed[1].Status)
 
 	// 恢复后缺省列表回到 2 行全 active
-	_, err = dsvc.Restore(ctx, "incl_item", docA.ID, "system")
+	_, err = dsvc.Restore(ctx, "incl_item", docA.ID, "system", nil)
 	require.NoError(t, err)
 	activeOnly, err = dsvc.List(ctx, "incl_item", nil, 100, false, service.ListFilter{})
 	require.NoError(t, err)
@@ -230,10 +230,10 @@ func TestA2_DataNotFound(t *testing.T) {
 	_, err = dsvc.Update(ctx, "nf_item", 999999, service.UpdateInput{Version: 1}, "system")
 	require.Equal(t, "DATA_NOT_FOUND", mustAE(t, err).Code)
 
-	_, err = dsvc.SoftDelete(ctx, "nf_item", 999999, "system")
+	_, err = dsvc.SoftDelete(ctx, "nf_item", 999999, "system", nil)
 	require.Equal(t, "DATA_NOT_FOUND", mustAE(t, err).Code)
 
-	_, err = dsvc.Restore(ctx, "nf_item", 999999, "system")
+	_, err = dsvc.Restore(ctx, "nf_item", 999999, "system", nil)
 	require.Equal(t, "DATA_NOT_FOUND", mustAE(t, err).Code)
 
 	_, err = dsvc.Get(ctx, "ghost_type", 1)
@@ -336,7 +336,7 @@ func TestA1_DeprecatedTypeRejectsWrite(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, doc.ID, got.ID)
 	// 生命周期操作放行
-	del, err := dsvc.SoftDelete(ctx, "legacy_item", doc.ID, "system")
+	del, err := dsvc.SoftDelete(ctx, "legacy_item", doc.ID, "system", nil)
 	require.NoError(t, err)
 	require.Equal(t, repository.RowStatusDeleted, del.Status)
 }

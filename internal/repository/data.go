@@ -178,13 +178,25 @@ func UpdateDocData(ctx context.Context, q dbtx, typeName string, id, expectedVer
 // UpdateDocStatus 状态迁移（软删/恢复共用；version 分配新 revision，客户端持有的
 // 旧文档立即过期，乐观锁语义对状态变更同样成立）。0 行 = 状态已非 fromStatus，
 // moved=false 由 service 决定幂等语义（重复软删/重复恢复返回现态）。
-func UpdateDocStatus(ctx context.Context, q dbtx, typeName string, id int64, fromStatus, toStatus, operator string) (*Document, bool, error) {
+// expectedVersion 非 nil 时附加 version 谓词（与 UpdateDocData 同款双保险：service
+// 已在行锁内预检相等，此分支 0 行只可能来自绕过预检的调用方 → 直接 409 而非幂等回显）。
+func UpdateDocStatus(ctx context.Context, q dbtx, typeName string, id int64, fromStatus, toStatus, operator string, expectedVersion *int64) (*Document, bool, error) {
+	conds := `id = $1 AND status = $2`
+	args := []any{id, fromStatus, toStatus, operator}
+	if expectedVersion != nil {
+		conds += ` AND version = $5`
+		args = append(args, *expectedVersion)
+	}
 	d, err := scanDoc(q.QueryRow(ctx,
 		`UPDATE "`+typeName+`" SET status = $3, version = nextval('public._al_document_revision_seq'::regclass),
 		 updated_by = COALESCE(NULLIF($4, ''), 'system'), updated_at = NOW()
-		 WHERE id = $1 AND status = $2
-		 RETURNING `+docCols, id, fromStatus, toStatus, operator))
+		 WHERE `+conds+`
+		 RETURNING `+docCols, args...))
 	if errors.Is(err, pgx.ErrNoRows) {
+		if expectedVersion != nil {
+			return nil, false, apperr.New(409, apperr.CodeConflict, "版本不匹配（数据已被并发修改）").
+				WithDetail("expected_version", *expectedVersion)
+		}
 		return nil, false, nil
 	}
 	if err != nil {

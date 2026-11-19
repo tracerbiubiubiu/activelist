@@ -54,7 +54,7 @@ func TestA5_ExportImportRoundTrip(t *testing.T) {
 	_, err = dsvc.Update(ctx, "xfer_item", d1.ID, service.UpdateInput{
 		Data: map[string]any{"qty": float64(9)}, Version: d1.Version}, "updater")
 	require.NoError(t, err)
-	_, err = dsvc.SoftDelete(ctx, "xfer_item", d2.ID, "system")
+	_, err = dsvc.SoftDelete(ctx, "xfer_item", d2.ID, "system", nil)
 	require.NoError(t, err)
 
 	exported := exportAll(t, dsvc, "xfer_item")

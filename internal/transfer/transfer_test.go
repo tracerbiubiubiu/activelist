@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"errors"
 	"io"
+	"net/http"
 	"strings"
 	"testing"
 
@@ -79,6 +80,58 @@ func TestDecodeBatches_Invalid(t *testing.T) {
 	require.ErrorContains(t, err, "JSON 数组")
 	err = DecodeBatches(strings.NewReader(`[{"id":1`), 2, func([]repository.Document) error { return nil })
 	require.Error(t, err)
+}
+
+// 文件尾核验（CMP-R02）：首个数组闭合后必须只剩尾随空白。第二段 payload 一旦
+// 被静默忽略，全量替换导入会拿“部分文件”当全部提交成功。前缀合法行仍整批回调
+// （导入事务随后回滚），但整体必须拒绝并归 400（badFile，非 413）。
+func TestDecodeBatches_TrailingContentRejected(t *testing.T) {
+	valid := `[{"id":"1","version":1,"data":{"name":"n"}}]` // id,string 公约（repository.Document）
+	cases := []struct {
+		name    string
+		raw     string
+		handled int
+	}{
+		{"second-array", valid + `[{"id":"2","version":1,"data":{"name":"x"}}]`, 1},
+		{"two-arrays", valid + valid, 1},
+		{"two-empty-arrays", `[] []`, 0},
+		{"trailing-closed", valid + `]`, 1},
+		{"trailing-object", valid + `{"id":"2"}`, 1},
+		{"trailing-garbage", valid + `garbage`, 1},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			var handled int
+			err := DecodeBatches(strings.NewReader(tc.raw), 2, func(batch []repository.Document) error {
+				handled += len(batch)
+				return nil
+			})
+			require.ErrorContains(t, err, "JSON 数组")
+			require.Equal(t, tc.handled, handled, "首个数组仍应整批回调后整体拒绝")
+		})
+	}
+}
+
+// 合法尾随空白不拒绝：导出侧 EncodeDocs 以 ']' 结束，导入侧容许调用方追加换行等空白。
+func TestDecodeBatches_TrailingWhitespaceAccepted(t *testing.T) {
+	var handled int
+	require.NoError(t, DecodeBatches(strings.NewReader(`[{"id":"1","version":1}]`+"\n\t \r\n"), 2, func(batch []repository.Document) error {
+		handled += len(batch)
+		return nil
+	}))
+	require.Equal(t, 1, handled)
+}
+
+// 尾随内容触顶仍透传 *http.MaxBytesError（调用端映射 413），不得吞成 badFile 的 400。
+func TestDecodeBatches_TrailingMaxBytesPassthrough(t *testing.T) {
+	const raw = `[{"id":"1","version":1}]`
+	for _, tail := range []string{` {"id":"2"}`, "x" + strings.Repeat(" ", 32)} {
+		limit := int64(len(raw) + 2)
+		body := io.NopCloser(strings.NewReader(raw + tail))
+		err := DecodeBatches(http.MaxBytesReader(nil, body, limit), 2, func([]repository.Document) error { return nil })
+		var mbe *http.MaxBytesError
+		require.ErrorAs(t, err, &mbe)
+	}
 }
 
 // handle 错误中断解码（导入事务回滚路径）。

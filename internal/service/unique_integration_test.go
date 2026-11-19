@@ -54,13 +54,13 @@ func TestUnique_SingleKey(t *testing.T) {
 	require.EqualValues(t, d1.ID, ae.Detail["existing_id"])
 
 	// 软删后同键可插（软删行不占用唯一性）
-	_, err = dsvc.SoftDelete(ctx, name, d1.ID, "system")
+	_, err = dsvc.SoftDelete(ctx, name, d1.ID, "system", nil)
 	require.NoError(t, err)
 	_, err = insertErr(t, dsvc, name, map[string]any{"ip": "1.1.1.1", "note": "reinsert"})
 	require.NoError(t, err)
 
 	// 恢复撞活跃行 → 409
-	_, err = dsvc.Restore(ctx, name, d1.ID, "system")
+	_, err = dsvc.Restore(ctx, name, d1.ID, "system", nil)
 	requireConflict409(t, err)
 }
 
