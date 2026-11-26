@@ -18,6 +18,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/tracerbiubiubiu/activelist/internal/apperr"
+	"github.com/tracerbiubiubiu/activelist/internal/config"
 	"github.com/tracerbiubiubiu/activelist/internal/meta"
 	"github.com/tracerbiubiubiu/activelist/internal/repository"
 	"github.com/tracerbiubiubiu/activelist/internal/transfer"
@@ -31,6 +32,8 @@ type DataService struct {
 	pageSizeMax     int
 	importBatchRows int
 	importMaxBytes  int64
+	b3              config.B3
+	b3Generation    int64
 }
 
 func NewDataService(pool *pgxpool.Pool, pageSizeDefault, pageSizeMax, importBatchRows int, importMaxBytes int64) *DataService {
@@ -79,6 +82,13 @@ func (s *DataService) gateType(ctx context.Context, typeName string, forWrite bo
 
 // Insert 插入数据（A2）。校验对请求原文进行——插入没有「旧行」可合并。
 func (s *DataService) Insert(ctx context.Context, typeName string, in InsertInput, operator string) (*repository.Document, error) {
+	if err := s.validateB3Producer(ctx, typeName, in.Data); err != nil {
+		return nil, err
+	}
+	monitored := s.B3GuardsLegacy(typeName)
+	if monitored {
+		in.Data = mergeData(in.Data, map[string]any{s.b3.AnchorField: s.b3.AnchorValue})
+	}
 	def, err := s.gateType(ctx, typeName, true)
 	if err != nil {
 		return nil, err
@@ -99,6 +109,11 @@ func (s *DataService) Insert(ctx context.Context, typeName string, in InsertInpu
 	if err := setLockTimeout(ctx, tx); err != nil {
 		return nil, err
 	}
+	if monitored {
+		if _, err := s.lockB3Stream(ctx, tx, typeName); err != nil {
+			return nil, err
+		}
+	}
 	if err := s.checkUniqueDup(ctx, tx, def, in.Data, 0); err != nil {
 		return nil, err
 	}
@@ -106,14 +121,26 @@ func (s *DataService) Insert(ctx context.Context, typeName string, in InsertInpu
 	if err != nil {
 		return nil, err
 	}
+	if monitored {
+		changed := b3Changed(nil, doc.Data, s.b3.WriteFields)
+		if err := s.appendB3Fact(ctx, tx, doc, typeName, "al.document.created.v1", changed, "", nil); err != nil {
+			return nil, err
+		}
+	}
 	if err := tx.Commit(ctx); err != nil {
 		return nil, apperr.New(500, apperr.CodeInternal, "提交插入事务失败")
+	}
+	if monitored {
+		return s.b3ProducerProjection(doc), nil
 	}
 	return doc, nil
 }
 
 // Get 单查（软删行可见，status 字段标注现态）。
 func (s *DataService) Get(ctx context.Context, typeName string, id int64) (*repository.Document, error) {
+	if s.B3GuardsLegacy(typeName) {
+		return nil, b3Forbidden()
+	}
 	def, err := s.gateType(ctx, typeName, false)
 	if err != nil {
 		return nil, err
@@ -135,6 +162,9 @@ type ListFilter struct {
 // 筛选：Keyword 对全部标量字段模糊；Field+Value 单字段精确——字段须存在且为
 // 标量（未知/列表类型 422），成对出现缺一即 422；Keyword ≤100 字符。
 func (s *DataService) List(ctx context.Context, typeName string, cur *repository.Cursor, pageSize int, includeDeleted bool, filt ListFilter) ([]repository.Document, error) {
+	if s.B3GuardsLegacy(typeName) {
+		return nil, b3Forbidden()
+	}
 	def, err := s.gateType(ctx, typeName, false)
 	if err != nil {
 		return nil, err
@@ -183,6 +213,10 @@ func (s *DataService) List(ctx context.Context, typeName string, cur *repository
 
 // Update 更新数据（读-合并-全量校验-乐观锁；A2/A4）。
 func (s *DataService) Update(ctx context.Context, typeName string, id int64, in UpdateInput, operator string) (*repository.Document, error) {
+	if err := s.validateB3Producer(ctx, typeName, in.Data); err != nil {
+		return nil, err
+	}
+	monitored := s.B3GuardsLegacy(typeName)
 	def, err := s.gateType(ctx, typeName, true)
 	if err != nil {
 		return nil, err
@@ -201,7 +235,15 @@ func (s *DataService) Update(ctx context.Context, typeName string, id int64, in 
 		return nil, err
 	}
 
-	doc, err := repository.GetDocForUpdate(ctx, tx, def.TypeName, id)
+	var doc *repository.Document
+	if monitored {
+		if _, err := s.lockB3Stream(ctx, tx, typeName); err != nil {
+			return nil, err
+		}
+		doc, err = s.b3Document(ctx, tx, typeName, id, true)
+	} else {
+		doc, err = repository.GetDocForUpdate(ctx, tx, def.TypeName, id)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -214,6 +256,13 @@ func (s *DataService) Update(ctx context.Context, typeName string, id int64, in 
 	}
 
 	merged := mergeData(doc.Data, in.Data)
+	var changed []string
+	if monitored {
+		changed = b3Changed(doc.Data, merged, s.b3.WriteFields)
+		if len(changed) == 0 {
+			return s.b3ProducerProjection(doc), nil
+		}
+	}
 	if err := validation.ValidateData(def.Fields, merged); err != nil {
 		return nil, mapDataValidationError(ctx, tx, err, def, true)
 	}
@@ -228,8 +277,16 @@ func (s *DataService) Update(ctx context.Context, typeName string, id int64, in 
 	if err != nil {
 		return nil, err
 	}
+	if monitored {
+		if err := s.appendB3Fact(ctx, tx, doc, typeName, "al.document.updated.v1", changed, "", nil); err != nil {
+			return nil, err
+		}
+	}
 	if err := tx.Commit(ctx); err != nil {
 		return nil, apperr.New(500, apperr.CodeInternal, "提交更新事务失败")
+	}
+	if monitored {
+		return s.b3ProducerProjection(doc), nil
 	}
 	return doc, nil
 }
@@ -240,6 +297,9 @@ func (s *DataService) Update(ctx context.Context, typeName string, id int64, in 
 // 409 零写（与 Update 同类型）；目标态相同的幂等重复不校验版本——版本判断仅约束
 // 实际迁移。
 func (s *DataService) SoftDelete(ctx context.Context, typeName string, id int64, operator string, expectedVersion *int64) (*repository.Document, error) {
+	if s.B3GuardsLegacy(typeName) {
+		return nil, b3Forbidden()
+	}
 	def, err := s.gateType(ctx, typeName, false)
 	if err != nil {
 		return nil, err
@@ -283,6 +343,9 @@ func (s *DataService) SoftDelete(ctx context.Context, typeName string, id int64,
 // expectedVersion 可选版本保护：语义同 SoftDelete——nil 旧契约；相等才实际迁移；
 // 版本拦截先于恢复查重（不匹配时零写、不触发唯一键查重）。
 func (s *DataService) Restore(ctx context.Context, typeName string, id int64, operator string, expectedVersion *int64) (*repository.Document, error) {
+	if s.B3GuardsLegacy(typeName) {
+		return nil, b3Forbidden()
+	}
 	def, err := s.gateType(ctx, typeName, false)
 	if err != nil {
 		return nil, err
@@ -414,6 +477,9 @@ func (s *DataService) checkUniqueDup(ctx context.Context, q pgx.Tx, def *meta.De
 	if !found {
 		return nil
 	}
+	if s.B3GuardsLegacy(def.TypeName) {
+		return apperr.New(http.StatusConflict, apperr.CodeConflict, "document violates a uniqueness constraint")
+	}
 	return apperr.New(409, apperr.CodeConflict,
 		"唯一键冲突: "+strings.Join(def.UniqueFields, "+")+" 已有活跃数据行").
 		WithDetail("unique_fields", def.UniqueFields).
@@ -432,6 +498,9 @@ type ImportResult struct {
 // 完整文档字段——A5 导出→导入闭环）。gate 过后才开始写，前置错误可安全转为
 // 业务错误响应；流中途错误只能截断（已在响应头之后，HTTP 层不可回滚）。
 func (s *DataService) Export(ctx context.Context, typeName string, w io.Writer) error {
+	if s.B3GuardsLegacy(typeName) {
+		return b3Forbidden()
+	}
 	def, err := s.gateType(ctx, typeName, false)
 	if err != nil {
 		return err
@@ -449,6 +518,9 @@ func (s *DataService) Export(ctx context.Context, typeName string, w io.Writer) 
 // 重复 id 422；逐行对当前 schema 全量校验（写路径全量校验，§1.3）；废弃类型
 // 拒绝导入（gate forWrite=true，与插入/更新同口径）。
 func (s *DataService) Import(ctx context.Context, typeName string, r io.Reader, operator string) (*ImportResult, error) {
+	if s.B3GuardsLegacy(typeName) {
+		return nil, b3Forbidden()
+	}
 	def, err := s.gateType(ctx, typeName, true)
 	if err != nil {
 		return nil, err

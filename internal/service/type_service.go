@@ -4,7 +4,9 @@ package service
 
 import (
 	"context"
+	"errors"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/tracerbiubiubiu/activelist/internal/apperr"
@@ -97,6 +99,10 @@ func (s *TypeService) Evolve(ctx context.Context, typeName string, in EvolveInpu
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 
+	if err := lockUnmonitoredType(ctx, tx, typeName); err != nil {
+		return nil, err
+	}
+
 	moved, err := meta.UpdateSchema(ctx, tx, typeName, in.Fields, in.UniqueFields, in.Version, operator)
 	if err != nil {
 		return nil, err
@@ -130,20 +136,26 @@ func (s *TypeService) Evolve(ctx context.Context, typeName string, in EvolveInpu
 
 // History schema 变更历史（新→旧；类型不存在 404）。
 func (s *TypeService) History(ctx context.Context, typeName string) ([]meta.HistoryEntry, error) {
-	if _, err := meta.GetByName(ctx, s.pool, typeName); err != nil {
+	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
+	if err != nil {
+		return nil, apperr.New(500, apperr.CodeInternal, "开启查询事务失败")
+	}
+	defer tx.Rollback(ctx)
+	// Read visibility and history from the same snapshot.
+	if _, err := meta.GetUnmonitoredByName(ctx, tx, typeName); err != nil {
 		return nil, err
 	}
-	return meta.ListHistory(ctx, s.pool, typeName)
+	return meta.ListHistory(ctx, tx, typeName)
 }
 
 // Get 查类型当前 schema 定义。
 func (s *TypeService) Get(ctx context.Context, typeName string) (*meta.Definition, error) {
-	return meta.GetByName(ctx, s.pool, typeName)
+	return meta.GetUnmonitoredByName(ctx, s.pool, typeName)
 }
 
 // List 类型列表。
 func (s *TypeService) List(ctx context.Context) ([]meta.Definition, error) {
-	return meta.List(ctx, s.pool)
+	return meta.ListUnmonitored(ctx, s.pool)
 }
 
 // Deprecate 废弃类型（幂等：已废弃直接返回现态；不存在 404）。
@@ -154,6 +166,10 @@ func (s *TypeService) Deprecate(ctx context.Context, typeName, operator string) 
 		return nil, apperr.New(500, apperr.CodeInternal, "开启事务失败")
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
+
+	if err := lockUnmonitoredType(ctx, tx, typeName); err != nil {
+		return nil, err
+	}
 
 	// 旧态读走 tx（与写同快照）：M-A4 schema 演进上线后，pool 读会拿到演进前
 	// 的 fields 进历史；pgx.Tx 满足 meta.pgxPool 接口，无需专用 GetByNameTx。
@@ -185,4 +201,23 @@ func (s *TypeService) Deprecate(ctx context.Context, typeName, operator string) 
 	}
 	// 幂等分支直接返回事务内现态；defer 回滚先释放连接，不嵌套取池。
 	return cur, nil
+}
+
+func lockUnmonitoredType(ctx context.Context, tx pgx.Tx, typeName string) error {
+	var typeID int64
+	err := tx.QueryRow(ctx, "SELECT id FROM data_types WHERE type_name=$1 FOR UPDATE", typeName).Scan(&typeID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return apperr.New(404, apperr.CodeTypeNotFound, "类型不存在")
+	}
+	if err != nil {
+		return apperr.New(500, apperr.CodeInternal, "读取类型失败")
+	}
+	var monitored bool
+	if err := tx.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM _al_b3_stream WHERE generation=$1)", typeID).Scan(&monitored); err != nil {
+		return b3Dependency()
+	}
+	if monitored {
+		return b3Forbidden()
+	}
+	return nil
 }

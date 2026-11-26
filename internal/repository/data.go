@@ -154,6 +154,23 @@ func GetDocForUpdate(ctx context.Context, q dbtx, typeName string, id int64) (*D
 	return d, nil
 }
 
+// GetScopedDoc applies the row scope before reading or taking a row lock. A miss
+// returns pgx.ErrNoRows so callers can use the same response for invisible rows.
+func GetScopedDoc(ctx context.Context, q dbtx, typeName string, id int64, field, value string, forUpdate bool) (*Document, error) {
+	query := `SELECT ` + docCols + ` FROM "` + typeName + `" WHERE id = $1 AND data -> $2::text = to_jsonb($3::text)`
+	if forUpdate {
+		query += ` FOR UPDATE`
+	}
+	doc, err := scanDoc(q.QueryRow(ctx, query, id, field, value))
+	if err == nil || errors.Is(err, pgx.ErrNoRows) {
+		return doc, err
+	}
+	if e := errLockWait(err); e != nil {
+		return nil, e
+	}
+	return nil, apperr.New(500, apperr.CodeInternal, "查询数据失败")
+}
+
 // UpdateDocData 内容更新（乐观锁：version 不匹配 0 行 → 409）。行锁在手的
 // 前提下 version 谓词是双保险，防御未来绕过 GetDocForUpdate 的调用方。
 func UpdateDocData(ctx context.Context, q dbtx, typeName string, id, expectedVersion int64, data []byte, operator string) (*Document, error) {

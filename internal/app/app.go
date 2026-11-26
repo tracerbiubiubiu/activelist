@@ -20,10 +20,11 @@ import (
 // App 应用实例：HTTP（/healthz /readyz；/api/v1 随 M-A2 起挂载）。
 // pool 不入 App——生命周期归 caller 的 cleanup（InitializeApp 返回值）。
 type App struct {
-	cfg    *config.Config
-	logger *slog.Logger
-	engine *gin.Engine
-	server *http.Server
+	cfg         *config.Config
+	logger      *slog.Logger
+	engine      *gin.Engine
+	server      *http.Server
+	pushChanges func(context.Context)
 }
 
 func NewApp(cfg *config.Config, logger *slog.Logger, engine *gin.Engine) *App {
@@ -52,6 +53,19 @@ func (a *App) Run() error {
 			serverErr <- err
 		}
 	}()
+
+	if a.pushChanges != nil {
+		pushCtx, cancelPush := context.WithCancel(ctx)
+		pushDone := make(chan struct{})
+		go func() {
+			defer close(pushDone)
+			a.pushChanges(pushCtx)
+		}()
+		defer func() {
+			cancelPush()
+			<-pushDone
+		}()
+	}
 
 	select {
 	case err := <-serverErr:

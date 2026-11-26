@@ -52,13 +52,21 @@ func AKSKAuth(callers map[string][]byte, maxBodyBytes int64, logger *slog.Logger
 // operator/request_id + 参数 4KB 截断；X-Request-ID 由 RequestID 回显响应头）。
 // 挂载于全局（探针也留痕）；body 读取后还原，不影响后续中间件与 handler。
 func AccessLog(logger *slog.Logger) gin.HandlerFunc {
+	return AccessLogWithBodyPolicy(logger, nil)
+}
+
+// AccessLogWithBodyPolicy allows a narrow route to omit request contents.
+func AccessLogWithBodyPolicy(logger *slog.Logger, omit func(*gin.Context) bool) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		if logger == nil {
 			c.Next()
 			return
 		}
 		start := time.Now()
-		params := snapshotParams(c)
+		var params, query string
+		if omit == nil || !omit(c) {
+			params, query = snapshotParams(c), c.Request.URL.RawQuery
+		}
 		c.Next()
 		op := c.GetString(aksk.ContextKeyOperator)
 		if op == "" {
@@ -70,7 +78,7 @@ func AccessLog(logger *slog.Logger) gin.HandlerFunc {
 			"status", c.Writer.Status(),
 			"operator", op,
 			"request_id", c.GetString("request_id"),
-			"query", c.Request.URL.RawQuery,
+			"query", query,
 			"params", params,
 			"duration_ms", time.Since(start).Milliseconds(),
 			// caller 归因（standards §6：服务间验签场景应含）——utils GinMiddleware

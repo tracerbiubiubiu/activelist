@@ -7,6 +7,7 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/tracerbiubiubiu/zhuzhao-utils/response"
@@ -44,6 +45,7 @@ type Deps struct {
 	Data          *service.DataService
 	Ready         func() error
 	Callers       map[string][]byte
+	B3CoreAK      string
 	MaxBodyBytes  int64
 	ImportTempDir string
 	Logger        *slog.Logger
@@ -55,7 +57,15 @@ func New(d Deps) *gin.Engine {
 	r := gin.New()
 	r.Use(gin.Recovery(), middleware.RequestID())
 	if d.Logger != nil {
-		r.Use(middleware.AccessLog(d.Logger))
+		r.Use(middleware.AccessLogWithBodyPolicy(d.Logger, func(c *gin.Context) bool {
+			path := c.Request.URL.Path
+			if strings.HasPrefix(path, "/internal/activelist/") {
+				return true
+			}
+			rest, isData := strings.CutPrefix(path, "/api/v1/data/")
+			typeName, _, _ := strings.Cut(rest, "/")
+			return isData && d.Data != nil && d.Data.B3GuardsLegacy(typeName)
+		}))
 	}
 
 	// 探针裸露（不进业务组）——容器编排存活/就绪检查用。
@@ -75,6 +85,13 @@ func New(d Deps) *gin.Engine {
 	v1 := r.Group("/api/v1")
 	if len(d.Callers) > 0 {
 		v1.Use(middleware.AKSKAuth(d.Callers, d.MaxBodyBytes, d.Logger))
+		v1.Use(func(c *gin.Context) {
+			caller := c.GetString(aksk.ContextKeyCaller)
+			if d.Data != nil && d.Data.B3RestrictedCaller(caller) &&
+				(c.Request.Method != http.MethodPost || !d.Data.B3ProducerRoute(caller, c.Param("typeName"), c.FullPath())) {
+				rejectB3(c)
+			}
+		})
 	}
 	{
 		types := v1.Group("/admin/types")
@@ -105,6 +122,13 @@ func New(d Deps) *gin.Engine {
 			data.GET("/:typeName/export", d.exportData)
 		}
 	}
+	if key := d.Callers[d.B3CoreAK]; d.B3CoreAK != "" && len(key) != 0 && d.Data != nil {
+		commands := r.Group("/internal/activelist/documents")
+		commands.Use(middleware.AKSKAuth(map[string][]byte{d.B3CoreAK: key}, 256<<10, d.Logger))
+		commands.POST("/get", d.b3Get)
+		commands.POST("/update", d.b3Update)
+		commands.POST("/receipt", d.b3Receipt)
+	}
 	// 导入不经过普通组的内存读体中间件；使用同一utils验签协议及标准失败响应，
 	// 完整验签并rewind私有临时文件后才进入Import（开启PG事务）。
 	importHandlers := []gin.HandlerFunc{}
@@ -115,6 +139,11 @@ func New(d Deps) *gin.Engine {
 		}
 		v := &aksk.Verifier{Keys: d.Callers, MaxBodyBytes: limit, Logger: d.Logger}
 		importHandlers = append(importHandlers, aksk.GinStreamingMiddleware(v, d.ImportTempDir, response.AKSKFail()))
+		importHandlers = append(importHandlers, func(c *gin.Context) {
+			if d.Data != nil && d.Data.B3RestrictedCaller(c.GetString(aksk.ContextKeyCaller)) {
+				rejectB3(c)
+			}
+		})
 	}
 	importHandlers = append(importHandlers, d.importData)
 	r.POST("/api/v1/data/:typeName/import", importHandlers...)
@@ -218,4 +247,9 @@ func asAppErr(err error) *apperr.Error {
 		return e
 	}
 	return apperr.New(500, apperr.CodeInternal, "内部错误")
+}
+
+func rejectB3(c *gin.Context) {
+	Fail(c, apperr.New(http.StatusForbidden, apperr.CodeForbidden, "ActiveList B3 profile does not allow this request"))
+	c.Abort()
 }
