@@ -12,8 +12,10 @@
 package app
 
 import (
+	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/tracerbiubiubiu/activelist/internal/config"
 	"github.com/tracerbiubiubiu/activelist/internal/service"
@@ -33,6 +35,17 @@ func InitializeApp(cfg *config.Config) (*App, func(), error) {
 			return nil, nil, fmt.Errorf("security.callers.%s 的 SK 为空——拒绝启动（fail-closed；配置 ACTIVELIST_CALLER_ZHUZHAO_SK）", ak)
 		}
 	}
+	if cfg.B3.TypeName != "" {
+		producerSK, coreSK := cfg.Security.Callers[cfg.B3.ProducerAK], cfg.Security.Callers[cfg.B3.CoreAK]
+		if producerSK == "" || coreSK == "" || producerSK == coreSK || cfg.B3.ProducerAK == "zhuzhao" || cfg.B3.CoreAK == "zhuzhao" {
+			return nil, nil, errors.New("ActiveList B3 requires distinct registered producer and Core command keys")
+		}
+		for ak, sk := range cfg.Security.Callers {
+			if ak != cfg.B3.ProducerAK && ak != cfg.B3.CoreAK && (sk == producerSK || sk == coreSK) {
+				return nil, nil, errors.New("ActiveList B3 keys cannot alias an ordinary caller")
+			}
+		}
+	}
 	logger := provideLogger(cfg)
 	pool, cleanupPool, err := providePool(cfg)
 	if err != nil {
@@ -40,6 +53,16 @@ func InitializeApp(cfg *config.Config) (*App, func(), error) {
 	}
 	types := service.NewTypeService(pool)
 	data := service.NewDataService(pool, cfg.Business.PageSizeDefault, cfg.Business.PageSizeMax, cfg.Business.ImportBatchRows, cfg.Business.ImportMaxBytes)
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	if err := data.EnableB3(ctx, cfg.B3); err != nil {
+		cleanupPool()
+		return nil, nil, err
+	}
 	engine := provideEngine(cfg, logger, types, data, provideReadyz(pool))
-	return NewApp(cfg, logger, engine), func() { cleanupPool() }, nil
+	app := NewApp(cfg, logger, engine)
+	if cfg.B3.TypeName != "" {
+		app.pushChanges = func(ctx context.Context) { data.RunB3Push(ctx, logger) }
+	}
+	return app, func() { cleanupPool() }, nil
 }

@@ -35,3 +35,17 @@ include_deleted只认true/1，缺省仅active。q搜索全部标量字段的文�
 普通CRUD最大16MiB内存验签，import使用utils GinStreamingMiddleware按business.import_max_bytes有界暂存私有文件。读失败400、超限413、鉴权401、服务器暂存故障503；认证成功才rewind进入事务。默认直连服务上限1GiB且受read/write超时与HMAC时间窗约束。浏览器经zhuzhao网关仍1MiB，大导入是授权运维通道；不得在普通上传页宣称可传1GiB。
 
 字段类型、unique_fields第一档限制、revision与导入替换风险见 [数据契约](data-contract.md)。
+
+## B3 受控活动清单命令
+
+单类型 B3 启用后，直接生产者仅可在原数据接口写入受监控类型。插入沿用 `{"data":{...}}` 并由 AL 设置行锚点，更新沿用 `data` 与 `version`。两条路径仅接受获准字段，响应的 `data` 只返回锚点和可写字段。普通调用方不能用旧数据接口查询、写入、软删、恢复、导入或导出受监控类型。
+
+多入口使用相同的行拒绝边界。不存在的文档和超出授权范围的文档返回相同的 404。类型内的唯一性约束继续生效，受监控类型发生冲突时返回通用 409。旧类型列表的结果与总数都排除已登记 B3 流的类型，旧详情和历史按同一规则拒绝。B3 的固定读取命令仍按准入返回获准字段。
+
+以下 POST 路由均只接受专用 Core AK/SK 签名，使用原有 AL 响应信封。请求只接受签入 body 的操作、目标准入和字段，不从 URL query 取业务参数。请求的准入有效期最多 30 秒。AL 在事务内复核行锚点和类型世代。
+
+- `/internal/activelist/documents/update` 接收已绑定 CAS 的 `al_execution_request`。返回类型、文档 ID、世代、已提交 revision 和 `noop`。同操作同输入返回原受权回执，同号异参或版本冲突返回 409。同值操作保存回执并保留原 revision。
+- `/internal/activelist/documents/get` 接收 `al_read_request`。返回指定字段的投影、查询时间和当前 revision。读取不改变文档或游标。
+- `/internal/activelist/documents/receipt` 查询原更新操作的回执。Core 按当前授权重新发出短时查询准入。查到原操作则返回原回执，缺少原记录时返回 404。查询不提交新写入。
+
+数据或世代冲突、目标不可见、授权失效分别保留各自的 HTTP 语义。持久源事实和 ACK 的推送接线见 [B3 单类型接线](../ops/configuration.md#b3-单类型接线)。

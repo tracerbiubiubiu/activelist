@@ -245,6 +245,7 @@ func scanDef(row pgx.Row) (*Definition, error) {
 }
 
 const selectCols = `type_name, schema_def, status, version, created_at, updated_at`
+const unmonitoredType = `NOT EXISTS (SELECT 1 FROM _al_b3_stream WHERE generation = data_types.id)`
 
 // GetByName 按名查类型定义（pool 通道）。
 func GetByName(ctx context.Context, pool pgxPool, typeName string) (*Definition, error) {
@@ -252,10 +253,16 @@ func GetByName(ctx context.Context, pool pgxPool, typeName string) (*Definition,
 		`SELECT `+selectCols+` FROM data_types WHERE type_name = $1`, typeName))
 }
 
-// List 全部类型（类型数量为小量级，无分页；按创建时间倒序）。
-func List(ctx context.Context, pool pgxPool) ([]Definition, error) {
+// GetUnmonitoredByName returns legacy metadata only for types outside the commissioned stream.
+func GetUnmonitoredByName(ctx context.Context, pool pgxPool, typeName string) (*Definition, error) {
+	return scanDef(pool.QueryRow(ctx,
+		`SELECT `+selectCols+` FROM data_types WHERE type_name = $1 AND `+unmonitoredType, typeName))
+}
+
+// ListUnmonitored lists legacy metadata in reverse creation order.
+func ListUnmonitored(ctx context.Context, pool pgxPool) ([]Definition, error) {
 	rows, err := pool.Query(ctx,
-		`SELECT `+selectCols+` FROM data_types ORDER BY created_at DESC, id DESC`)
+		`SELECT `+selectCols+` FROM data_types WHERE `+unmonitoredType+` ORDER BY created_at DESC, id DESC`)
 	if err != nil {
 		return nil, apperr.New(500, apperr.CodeInternal, "查询类型列表失败")
 	}

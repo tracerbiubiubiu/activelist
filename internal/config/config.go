@@ -77,6 +77,7 @@ type Security struct {
 }
 
 type Config struct {
+	B3       B3       `mapstructure:"b3"`
 	Server   Server   `mapstructure:"server"`
 	Postgres Postgres `mapstructure:"postgres"`
 	Log      Log      `mapstructure:"log"`
@@ -145,6 +146,8 @@ func Load(path string) (*Config, error) {
 	viperBindInt64(v, "business.import_max_bytes", "ACTIVELIST_BUSINESS_IMPORT_MAX_BYTES", 1<<30)
 	v.BindEnv("security.callers.zhuzhao", "ACTIVELIST_CALLER_ZHUZHAO_SK")
 
+	bindB3(v)
+
 	var cfg Config
 	if err := v.Unmarshal(&cfg); err != nil {
 		return nil, fmt.Errorf("unmarshal config: %w", err)
@@ -182,6 +185,14 @@ func Load(path string) (*Config, error) {
 	}
 	if sk := v.GetString("security.callers.zhuzhao"); sk != "" {
 		cfg.Security.Callers["zhuzhao"] = sk
+	}
+	for ak, env := range map[string]string{
+		cfg.B3.ProducerAK: "ACTIVELIST_B3_PRODUCER_SK",
+		cfg.B3.CoreAK:     "ACTIVELIST_B3_CORE_SK",
+	} {
+		if sk := os.Getenv(env); cfg.B3.TypeName != "" && ak != "" && sk != "" {
+			cfg.Security.Callers[ak] = sk
+		}
 	}
 	return &cfg, nil
 }

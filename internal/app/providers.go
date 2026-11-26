@@ -62,10 +62,14 @@ func provideEngine(cfg *config.Config, logger *slog.Logger, types *service.TypeS
 	for ak, sk := range cfg.Security.Callers {
 		callers[ak] = []byte(sk)
 	}
+	var b3CoreAK string
+	if cfg.B3.TypeName != "" {
+		b3CoreAK = cfg.B3.CoreAK
+	}
 	return handler.New(handler.Deps{
 		Types: types, Data: data, Ready: ready,
 		// 普通CRUD保留16MiB内存验签；import独立走utils磁盘流式验签，
 		// 上限取Business.ImportMaxBytes，验签成功后才开启导入事务。
-		Callers: callers, MaxBodyBytes: 16 << 20, Logger: logger,
+		Callers: callers, B3CoreAK: b3CoreAK, MaxBodyBytes: 16 << 20, Logger: logger,
 	})
 }

@@ -19,7 +19,7 @@ activelist 是本平台动态业务清单薄服务：类型/schema、数据 CRUD
 - `DataService.checkUniqueDup` 先查再写，没有数据库硬唯一约束；并发同键可双写，缺少任一键会跳过查重，导入不检查业务 unique_fields。不能用“在事务内”推导并发原子唯一。
 - `DataService.Import` 是锁表后全量替换，包含删除已有软删行；不是追加/upsert。同文件再次导入可能得到相同业务内容，但 revision 改变，不等于无副作用重放。
 - 导出是含软删行的裸 JSON 数组，流中途失败可能只表现为截断；HTTP200 不能证明导出包完整。服务大导入通道与浏览器网关上限不同。
-- 本服务只验服务 AK/SK，不做用户角色/行级权限。`sensitive` 目前只是存储标记，日志脱敏未启用，不能据字段存在声称已保护。
+- 普通 CRUD 仅验服务 AK/SK。B3 受控范围按本页的单类型规则检查行锚点和字段。`sensitive` 目前只是存储标记，日志脱敏未启用，不能据字段存在声称已保护。
 
 源码锚点：`internal/service/type_service.go` 的 `TypeService.Register` / `Evolve`，`internal/service/data_service.go` 的 `DataService.Update` / `checkUniqueDup` / `Import` / `Export`，`internal/meta/meta.go` 的 `Definition` / `Field`。准确现态和错误语义继续由[数据契约](../api/data-contract.md)维护。
 
@@ -65,7 +65,7 @@ AL不建设第二事件总线，也不因触发任务而依赖TR；但“AL不�
 
 ### AL写主的最小变更事实
 
-以下均为目标，当前源码没有outbox或变化订阅接口。`DataService.Insert`、`Update`、`SoftDelete`、`Restore`、`Import`是必须逐路径核对的产品写入口；定时任务也经同一用例提交，不能只给浏览器路径加事件。类型/schema变更是独立元数据事实，具体事件和已有`TypeService.Register/Evolve/Deprecate`的对应关系在启用前冻结，不混成文档内容变更。绕过这些受控入口的DB运维修复/迁移须有专门批次manifest或重建对账，不默认被产品事件捕获。
+下述为完整 R06 目标。受监控的单类型插入、更新及其 outbox 见本页 B3 范围。`DataService.Insert`、`Update`、`SoftDelete`、`Restore`、`Import`是必须逐路径核对的产品写入口；定时任务也经同一用例提交，不能只给浏览器路径加事件。类型/schema变更是独立元数据事实，具体事件和已有`TypeService.Register/Evolve/Deprecate`的对应关系在启用前冻结，不混成文档内容变更。绕过这些受控入口的DB运维修复/迁移须有专门批次manifest或重建对账，不默认被产品事件捕获。
 
 - **原子边界**：已启用的可靠变更源，数据事实、最小变更凭证、该入口的领域约束及效果去重凭证同一个AL事务提交；必需凭证失败不返回该源变更已可靠交接。AL只持久记录事实，提交后才投递或供拉取，不在数据事务里等待主仓/TR的网络响应。
 - **事实信封**：稳定`event_id`、事件schema版本、生产者/来源实例与数据世代、类型/文档ID、已提交revision、操作类别、发生时间、最小变更字段/摘要或受权引用、`correlation_id/causation_id`。metadata version、数据revision、能力合同版本及投递游标各自独立。
@@ -92,7 +92,7 @@ AL不建设第二事件总线，也不因触发任务而依赖TR；但“AL不�
 
 ### no-op、防回环与预算
 
-当前`Update`即使业务值相同也可能产生新revision；本轮不修改该API行为。目标事件明确`data_changed`及业务字段变化，默认数据订阅只响应真正业务差异，不把`updated_at/updated_by`自动变化当重复触发理由。需要监听技术写入、软删恢复或元数据变化时使用明确事件类别及规则。重复投递不是新业务变化；重复导入的批次事实也不自动授权逐行重跑。
+普通 `Update` 即使业务值相同也可能产生新 revision。B3 受监控类型的同值更新保持原 revision。目标事件明确`data_changed`及业务字段变化，默认数据订阅只响应真正业务差异，不把`updated_at/updated_by`自动变化当重复触发理由。需要监听技术写入、软删恢复或元数据变化时使用明确事件类别及规则。重复投递不是新业务变化；重复导入的批次事实也不自动授权逐行重跑。
 
 订阅规则在主仓管理，绑定事件/字段谓词、目标能力版本、允许输入映射和授权主体。配置预检识别明显循环；运行时保留root/cause和有界链深、同根反应次数、对象并发/开始速率/扇出预算。AL更新→任务→AL更新达到预算时持久hold并暴露原因、待处置对象及恢复入口，不能静默丢事件或无限自触发。人工恢复同一回合不得暗中重置预算；调用方不能用自填新root规避预算，需要新根重跑时显式批准并关联旧链。
 
@@ -108,7 +108,7 @@ R06 统一承接并发唯一、schema/存量兼容、授权查询、敏感字段
 
 contract 层验证主仓查询 Port、服务签名、字段/schema 与错误兼容；真实 PostgreSQL 层验证并发、DDL/事务、序列与恢复；真实专业接口和企业 IAM 环境单独留证。各层独立登记，外部尚不可达不阻塞 mock/contract，也不能据前两层关闭 real。
 
-本页没有实施R06或新增源事件/订阅链，也没有修改API、迁移、依赖或执行运行验收。AL变更源、受控写adapter和订阅触发属于新增能力互通范围，P7实施前须单列子交付/验收和增量复估；不自动包含在原R06 5–8日、I01或已冻结排期里。代表链首先证明“定时任务→AL受控更新”和“AL变更→一次获准任务”，再逐步扩展；复杂分支/长等待仍按平台后继窗口，不先建通用DAG。后续代码批同步[数据契约](../api/data-contract.md)、[运维](../ops/README.md)和主总账，仍按正常门禁验证。
+这里保留完整 R06 的规划。单类型 B3 范围见下节。AL变更源、受控写adapter和订阅触发属于新增能力互通范围，P7实施前须单列子交付/验收和增量复估；不自动包含在原R06 5–8日、I01或已冻结排期里。代表链首先证明“定时任务→AL受控更新”和“AL变更→一次获准任务”，再逐步扩展；复杂分支/长等待仍按平台后继窗口，不先建通用DAG。后续代码批同步[数据契约](../api/data-contract.md)、[运维](../ops/README.md)和主总账，仍按正常门禁验证。
 
 
 ## 2026-11-13逐操作与三链详设后继
@@ -116,3 +116,10 @@ contract 层验证主仓查询 Port、服务签名、字段/schema 与错误兼�
 主仓[实际操作库存](../../../zhuzhao/docs/design/capability-operation-catalog.md)给出当前route/service/调用者/写主与明确例外；[三链详设](../../../zhuzhao/docs/design/capability-interconnect-detail.md)和[精确Schema](../../../zhuzhao/docs/design/capability-interconnect-detail.schema.json)为CE01–05的目标合同。本仓旧wire仍以API文档和源码为准，未因候选Schema改版。净增、最小UI/运维和测试由[唯一补齐估算](../../../zhuzhao/docs/planning/planning-scope-estimates.json)扣重后入当前排程，不另维护平行数字。
 
 AL是文档、revision、generation、效果收据和源事务事实写主；core恢复当前主体并验类型/行/字段，短时准入claims随签名绑定精确operation/hash/目标/fence。AL验claims并在本库同事务完成CAS、receipt和事实，不调用TR或另造IAM。事务型每类型stream head提供完整提交游标，源feed/ACK与执行成功分开；noop不触发，Import一批一世代摘要，逐行展开须另批准。旧网关反代迁移时必须汇入同一受权应用用例，不能留裸proxy旁路。候选SQL8项通过不证明产品已实现该链。
+
+
+## B3 单类型试验范围
+
+`DataService.Insert` 和 `DataService.Update` 在同一 PostgreSQL 事务中提交行变化与 `_al_b3_outbox` 源事实。流游标由 `_al_b3_stream` 行锁串行分配，与数据 revision 分开。类型世代取 `data_types.id`。`PushNextB3` 每次只发送下一游标，以租约恢复和校验过的原事件 ACK 推进确认水位。Core 拥有收件、订阅和 Taskrunner 调度，两仓各自提交账本。
+
+监控类型的直接 POST 插入和更新只接受单独生产者密钥及获准字段。插入由服务设置固定锚点，更新只作用于仍在固定范围的行。普通数据读、软删、恢复、全量导入导出及类型修改对监控类型关闭。其余类型沿用原接口。现有直接插入合同每次获准提交产生独立源变化，传输重投保留已提交事件身份。历史事件值只取发布名单，不回扫现值。配置与恢复见 [B3 单类型接线](../ops/configuration.md#b3-单类型接线)。

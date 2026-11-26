@@ -93,3 +93,33 @@ func TestPostgresDSN(t *testing.T) {
 	require.Contains(t, dsn, "postgres://u:p%40ss%3Aword@db:5432/al", "密码保留字符须转义")
 	require.Contains(t, dsn, "sslmode=disable")
 }
+
+func TestLoad_B3EnvOnly(t *testing.T) {
+	t.Setenv("ACTIVELIST_B3_TYPE_NAME", "b3_documents")
+	t.Setenv("ACTIVELIST_B3_WRITE_FIELDS", "name,review_status")
+	t.Setenv("ACTIVELIST_B3_READ_GRANT_REF", "b3-read-grant-0001")
+	t.Setenv("ACTIVELIST_B3_PRODUCER_AK", "producer")
+	t.Setenv("ACTIVELIST_B3_PRODUCER_SK", "synthetic-producer")
+	t.Setenv("ACTIVELIST_B3_CORE_AK", "command")
+	t.Setenv("ACTIVELIST_B3_CORE_SK", "synthetic-command")
+	cfg, err := Load("")
+	require.NoError(t, err)
+	require.Equal(t, "b3_documents", cfg.B3.TypeName)
+	require.Equal(t, []string{"name", "review_status"}, cfg.B3.WriteFields)
+	require.Equal(t, "b3-read-grant-0001", cfg.B3.ReadGrantRef)
+	require.Equal(t, "synthetic-producer", cfg.Security.Callers["producer"])
+	require.Equal(t, "synthetic-command", cfg.Security.Callers["command"])
+}
+
+func TestLoad_B3DisabledDoesNotRegisterDedicatedKeys(t *testing.T) {
+	t.Setenv("ACTIVELIST_B3_TYPE_NAME", "")
+	t.Setenv("ACTIVELIST_B3_PRODUCER_AK", "producer")
+	t.Setenv("ACTIVELIST_B3_PRODUCER_SK", "synthetic-producer")
+	t.Setenv("ACTIVELIST_B3_CORE_AK", "command")
+	t.Setenv("ACTIVELIST_B3_CORE_SK", "synthetic-command")
+	cfg, err := Load("")
+	require.NoError(t, err)
+	require.Empty(t, cfg.B3.TypeName)
+	require.NotContains(t, cfg.Security.Callers, "producer")
+	require.NotContains(t, cfg.Security.Callers, "command")
+}

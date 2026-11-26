@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/tracerbiubiubiu/zhuzhao-utils/aksk"
 
 	"github.com/tracerbiubiubiu/activelist/internal/repository"
 	"github.com/tracerbiubiubiu/activelist/internal/service"
@@ -23,7 +24,7 @@ func (d *Deps) insertData(c *gin.Context) {
 		BadRequest(c, "请求体解析失败（data 必填且须为 JSON 对象）")
 		return
 	}
-	doc, err := d.Data.Insert(c.Request.Context(), c.Param("typeName"), in, currentOperator(c))
+	doc, err := d.Data.Insert(service.B3ProducerContext(c.Request.Context(), c.GetString(aksk.ContextKeyCaller)), c.Param("typeName"), in, currentOperator(c))
 	if err != nil {
 		Fail(c, asAppErr(err))
 		return
@@ -113,7 +114,7 @@ func (d *Deps) updateData(c *gin.Context) {
 		BadRequest(c, "请求体解析失败（data 必填且须为 JSON 对象）")
 		return
 	}
-	doc, err := d.Data.Update(c.Request.Context(), c.Param("typeName"), id, in, currentOperator(c))
+	doc, err := d.Data.Update(service.B3ProducerContext(c.Request.Context(), c.GetString(aksk.ContextKeyCaller)), c.Param("typeName"), id, in, currentOperator(c))
 	if err != nil {
 		Fail(c, asAppErr(err))
 		return
